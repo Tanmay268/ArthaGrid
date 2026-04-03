@@ -37,7 +37,7 @@ const userSchema = new mongoose.Schema(
             default: ROLES.VIEWER,
         },
         isActive: {
-            type: boolean,
+            type: Boolean,
             default: true,
         },
     },
@@ -47,10 +47,9 @@ const userSchema = new mongoose.Schema(
 );
 
 //Hashing password before saving
-userSchema.pre('save', async function (next){
-    if(!this.isModified('password')) return next();
+userSchema.pre('save', async function () {
+    if (!this.isModified('password')) return;
     this.password = await bcrypt.hash(this.password, 12);
-    next();
 });
 
 //Instance method to compare passwords

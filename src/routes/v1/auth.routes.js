@@ -1,7 +1,7 @@
 const router = require('express').Router();
-const { register, login } = require('../controllers/auth.controller');
-const validate = require('../middleware/validate');
-const { registerSchema, loginSchema } = require('../validators/auth.validator');
+const { register, login } = require('../../controllers/auth.controller');
+const validate = require('../../middleware/validate');
+const { registerSchema, loginSchema } = require('../../validators/auth.validator');
 const rateLimit = require('express-rate-limit');
 
 const authLimiter = rateLimit({

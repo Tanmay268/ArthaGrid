@@ -25,18 +25,23 @@ const register = async ({ name, email, password, role }) => {
 }
 
 const login = async ({ email, password }) => {
-    const user = await USer.findOne({ email }).select('+password');
-    if(!user) throw ApiError.unauthorized('Invalid credentials');
+    if (!email || !password) {
+        throw ApiError.badRequest('Email and password are required');
+    }
+
+    const user = await User.findOne({ email }).select('+password');
+    if (!user) throw ApiError.unauthorized('Invalid credentials');
 
     const isMatch = await user.comparePassword(password);
-    if(!isMatch) throw ApiError.unauthorized('Invalid credentials');
+    if (!isMatch) throw ApiError.unauthorized('Invalid credentials');
 
-    if(!user.isActive) throw ApiError.forbidden('Account deactivated');
+    if (!user.isActive) throw ApiError.forbidden('Account deactivated');
 
     const token = generateToken(user._id);
 
     return { 
-        user: { id: user._id,
+        user: {
+            id: user._id,
             name: user.name,
             email: user.email,
             role: user.role,
