@@ -14,7 +14,7 @@ const validate = (schema, target = 'body') => {
                 field: d.path.join('.'),
                 message: d.message.replace(/['"]/g, ''),
             }));
-            throw ApiError.badRequest('Validation failed', details);
+            return next(ApiError.badRequest('Validation failed', details));
         }
 
         req[target] = value; //replaced with sanitized value

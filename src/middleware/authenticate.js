@@ -12,7 +12,7 @@ const authenticate = async (req, res, next) => {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    const user = await User.findByid(decoded.id).select('+isActive');
+    const user = await User.findById(decoded.id).select('+isActive');
     if(!user) throw ApiError.unauthorized('User no longer exist');
     if(!user.isActive) throw ApiError.forbidden('Account has beed deactivated');
 

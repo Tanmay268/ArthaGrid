@@ -1,6 +1,5 @@
 const ApiError = require('../utils/ApiError');
 
-//Permission registry - to define what each role can do
 const PERMISSIONS = {
     viewer: [
         'read:transactions',
@@ -15,7 +14,7 @@ const PERMISSIONS = {
     admin: [
         'read:transactions',
         'write:transactions',
-        'delete:transaction',
+        'delete:transactions',
         'read:dashboard',
         'read:analytics',
         'read:users',
@@ -25,17 +24,22 @@ const PERMISSIONS = {
     ],
 };
 
-//usage: Authorize('write:transaction')
 const authorize = (...requiredPermissions) => {
     return (req, res, next) => {
         const userPermissions = PERMISSIONS[req.user.role] || [];
-        const hasAll = requiredPermissions.every(p => userPermissions.includes(p));
 
-        if(!hasAll){
-            throw ApiError.forbidden(
-                `Your role(${req.user.role}) does not have permission to perform this action`
+        const hasAll = requiredPermissions.every(p =>
+            userPermissions.includes(p)
+        );
+
+        if (!hasAll) {
+            return next(
+                ApiError.forbidden(
+                    `Your role (${req.user.role}) does not have permission to perform this action`
+                )
             );
         }
+
         next();
     };
 };
