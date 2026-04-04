@@ -34,9 +34,9 @@ const seed = async () => {
 
   // ── Create users ──
   const [admin, analyst, viewer] = await User.create([
-    { name: 'Alice Admin',   email: 'admin@test.com',   password: 'pass123', role: 'admin'   },
-    { name: 'Bob Analyst',   email: 'analyst@test.com', password: 'pass123', role: 'analyst' },
-    { name: 'Carol Viewer',  email: 'viewer@test.com',  password: 'pass123', role: 'viewer'  },
+    { name: 'Alice Admin',   email: 'admin@test.com',   password: 'pass1234', role: 'admin'   },
+    { name: 'Bob Analyst',   email: 'analyst@test.com', password: 'pass1234', role: 'analyst' },
+    { name: 'Carol Viewer',  email: 'viewer@test.com',  password: 'pass1234', role: 'viewer'  },
   ]);
 
   console.log('✓ Created 3 users');
@@ -66,9 +66,9 @@ const seed = async () => {
 
   console.log('\n──────────────────────────────────────');
   console.log('Seeded test accounts:');
-  console.log('  admin@test.com    / pass123  → admin');
-  console.log('  analyst@test.com  / pass123  → analyst');
-  console.log('  viewer@test.com   / pass123  → viewer');
+  console.log('  admin@test.com    / pass1234  → admin');
+  console.log('  analyst@test.com  / pass1234  → analyst');
+  console.log('  viewer@test.com   / pass1234  → viewer');
   console.log('──────────────────────────────────────\n');
   process.exit(0);
 };

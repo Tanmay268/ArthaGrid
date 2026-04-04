@@ -25,13 +25,40 @@ Server: `http://localhost:5000`
 Swagger docs: `http://localhost:5000/api/docs`
 Health check: `http://localhost:5000/health`
 
+### Local development
+
+Use `.env.example` for your local machine and keep local/dev data separate from production. A typical local `.env` should keep:
+
+```bash
+NODE_ENV=development
+PORT=5000
+ALLOWED_ORIGINS=http://localhost:3000
+```
+
+Run the local server with:
+
+```bash
+npm run dev
+```
+
+### Render deployment
+
+repo also includes `render.yaml` for a Render web service blueprint and `.env.render.example` as a production env reference.
+
+Recommended setup:
+
+1. Keep local development on `.env`
+2. Create a separate MongoDB database for Render production
+3. Set Render environment variables for `MONGO_URI`, `JWT_SECRET`, and `ALLOWED_ORIGINS`
+4. Point `ALLOWED_ORIGINS` to your deployed frontend URL(s)
+
 ### Test credentials (after seeding)
 
 | Email               | Password | Role    |
 |---------------------|----------|---------|
-| admin@test.com      | pass123  | admin   |
-| analyst@test.com    | pass123  | analyst |
-| viewer@test.com     | pass123  | viewer  |
+| admin@test.com      | pass1234  | admin   |
+| analyst@test.com    | pass1234  | analyst |
+| viewer@test.com     | pass1234  | viewer  |
 
 ---
 
@@ -104,14 +131,14 @@ src/
 
 | Permission            | Viewer | Analyst | Admin |
 |-----------------------|:------:|:-------:|:-----:|
-| `read:transactions`   | ✓      | ✓       | ✓     |
-| `write:transactions`  |        |         | ✓     |
-| `delete:transactions` |        |         | ✓     |
-| `read:dashboard`      | ✓      | ✓       | ✓     |
-| `read:analytics`      |        | ✓       | ✓     |
-| `read:users`          |        |         | ✓     |
-| `write:users`         |        |         | ✓     |
-| `read:audit`          |        |         | ✓     |
+| `read:transactions`   | YES    | YES     | YES   |
+| `write:transactions`  |        |         | YES   |
+| `delete:transactions` |        |         | YES   |
+| `read:dashboard`      | YES    | YES     | YES   |
+| `read:analytics`      |        | YES     | YES   |
+| `read:users`          |        |         | YES   |
+| `write:users`         |        |         | YES   |
+| `read:audit`          |        |         | YES   |
 
 RBAC is enforced server-side via a permission map in `src/middleware/authorize.js`. Roles grant sets of permissions; the `authorize(...permissions)` middleware checks those permissions — not role strings — so adding new roles requires only updating the map, not touching any route.
 
@@ -308,19 +335,39 @@ Transactions are never permanently deleted. `DELETE /transactions/:id` sets `isD
 
 ---
 
-## Deployment (Railway)
+## Deployment (Render)
 
-```bash
-# Install Railway CLI
-npm install -g @railway/cli
+### Option 1: Blueprint deploy
 
-# Login and deploy
-railway login
-railway init
-railway up
-```
+1. Push this repo to GitHub
+2. In Render, choose **New +** -> **Blueprint**
+3. Select this repository so Render reads `render.yaml`
+4. Add the secret env vars when prompted:
+   - `MONGO_URI`
+   - `JWT_SECRET`
+   - `ALLOWED_ORIGINS`
 
-Set environment variables in the Railway dashboard under **Variables**.
+Render will install dependencies with `npm install`, run the app with `npm start`, and use `/health` as the health check.
+
+### Option 2: Manual web service
+
+If you prefer to create the service manually in Render, use:
+
+- Build command: `npm install`
+- Start command: `npm start`
+- Health check path: `/health`
+- Environment: `Node`
+
+Use `.env.render.example` as the reference for production values.
+
+### Keeping a development/testing version
+
+For testing while keeping production stable, use one of these setups:
+
+1. Local testing: keep using `npm run dev` with `.env`
+2. Render staging: create a second Render service from the same repo with a different database and different `ALLOWED_ORIGINS`
+
+If you create a second Render service, point it to a separate dev/staging MongoDB database so test data never mixes with production data.
 
 ---
 

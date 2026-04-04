@@ -1,4 +1,12 @@
 const swaggerJsdoc = require('swagger-jsdoc');
+const baseUrl = process.env.APP_BASE_URL || process.env.RENDER_EXTERNAL_URL;
+const servers = [
+  { url: 'http://localhost:5000/api/v1', description: 'Local development' },
+];
+
+if (baseUrl) {
+  servers.unshift({ url: `${baseUrl}/api/v1`, description: 'Deployed environment' });
+}
 
 const options = {
   definition: {
@@ -33,9 +41,7 @@ Get a token from \`POST /api/v1/auth/login\`.
       `,
       contact: { name: 'Tanmay Kaushik' },
     },
-    servers: [
-      { url: 'http://localhost:5000/api/v1', description: 'Local development' },
-    ],
+    servers,
     components: {
       securitySchemes: {
         bearerAuth: {
