@@ -12,7 +12,7 @@ const options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'Finance Dashboard API',
+      title: 'ArthaGrid',
       version: '1.0.0',
       description: `
 ## Finance Dashboard Backend API
