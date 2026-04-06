@@ -18,6 +18,8 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+const appBaseUrl = process.env.APP_BASE_URL || process.env.RENDER_EXTERNAL_URL || '';
+const appOrigin = appBaseUrl ? new URL(appBaseUrl).origin : null;
 
 // ── Security ──────────────────────────────────────────────────────────────────
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
@@ -28,7 +30,7 @@ app.use(cors({
       return callback(null, true);
     }
 
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin || origin === appOrigin || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
 
