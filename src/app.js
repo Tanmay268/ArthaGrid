@@ -78,6 +78,16 @@ app.get('/health', (req, res) => {
 });
 
 // ── API routes ────────────────────────────────────────────────────────────────
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'ArthaGrid API is running',
+    docs: '/api/docs',
+    health: '/health',
+    apiBase: '/api/v1',
+  });
+});
+
 app.use('/api/v1', require('./routes/v1'));
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
