@@ -350,9 +350,5 @@ Transactions are never permanently deleted. `DELETE /transactions/:id` sets `isD
 
 ---
 
-## References
-
-- Sandhu et al. (1996). *Role-Based Access Control Models*. IEEE Computer. — foundational RBAC paper: https://csrc.nist.gov/csrc/media/projects/role-based-access-control/documents/sandhu96.pdf
-- NIST RBAC Standard: https://csrc.nist.gov/projects/role-based-access-control
-- MongoDB Aggregation Pipeline: https://www.mongodb.com/docs/manual/aggregation/
-- Express Security Best Practices: https://expressjs.com/en/advanced/best-practice-security.html
+## Workflow and Diagrams for easy understanding
+https://drive.google.com/file/d/1RaGmj0nunsP5N_0uvqRBT5MMr5CjQ-bj/view?usp=sharing
