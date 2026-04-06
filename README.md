@@ -41,17 +41,6 @@ Run the local server with:
 npm run dev
 ```
 
-### Render deployment
-
-repo also includes `render.yaml` for a Render web service blueprint and `.env.render.example` as a production env reference.
-
-Recommended setup:
-
-1. Keep local development on `.env`
-2. Create a separate MongoDB database for Render production
-3. Set Render environment variables for `MONGO_URI`, `JWT_SECRET`, and `ALLOWED_ORIGINS`
-4. Point `ALLOWED_ORIGINS` to your deployed frontend URL(s)
-
 ### Test credentials (after seeding)
 
 | Email               | Password | Role    |
@@ -332,42 +321,6 @@ Tests use `mongodb-memory-server` — no external MongoDB required. Each test su
 ## Soft Delete
 
 Transactions are never permanently deleted. `DELETE /transactions/:id` sets `isDeleted: true`. A Mongoose `pre(/^find/)` middleware automatically excludes these records from all queries. Aggregation pipelines manually include `{ isDeleted: { $ne: true } }` since they bypass Mongoose middleware.
-
----
-
-## Deployment (Render)
-
-### Option 1: Blueprint deploy
-
-1. Push this repo to GitHub
-2. In Render, choose **New +** -> **Blueprint**
-3. Select this repository so Render reads `render.yaml`
-4. Add the secret env vars when prompted:
-   - `MONGO_URI`
-   - `JWT_SECRET`
-   - `ALLOWED_ORIGINS`
-
-Render will install dependencies with `npm install`, run the app with `npm start`, and use `/health` as the health check.
-
-### Option 2: Manual web service
-
-If you prefer to create the service manually in Render, use:
-
-- Build command: `npm install`
-- Start command: `npm start`
-- Health check path: `/health`
-- Environment: `Node`
-
-Use `.env.render.example` as the reference for production values.
-
-### Keeping a development/testing version
-
-For testing while keeping production stable, use one of these setups:
-
-1. Local testing: keep using `npm run dev` with `.env`
-2. Render staging: create a second Render service from the same repo with a different database and different `ALLOWED_ORIGINS`
-
-If you create a second Render service, point it to a separate dev/staging MongoDB database so test data never mixes with production data.
 
 ---
 
