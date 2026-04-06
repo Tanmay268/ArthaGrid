@@ -17,9 +17,8 @@ const authService = require('../services/auth.service');
  *               name:     { type: string, example: Alice Admin }
  *               email:    { type: string, example: alice@example.com }
  *               password: { type: string, example: pass123 }
- *               role:     { type: string, enum: [viewer, analyst, admin], default: viewer }
  *     responses:
- *       201: { description: User registered successfully }
+ *       201: { description: User registered successfully as a viewer }
  *       409: { description: Email already registered }
  */
 const register = async (req, res) => {

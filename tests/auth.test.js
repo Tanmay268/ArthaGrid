@@ -11,7 +11,7 @@ describe('POST /api/v1/auth/register', () => {
   it('registers a new user and returns token', async () => {
     const res = await request(app)
       .post('/api/v1/auth/register')
-      .send({ name: 'Test User', email: 'test@test.com', password: 'pass123', role: 'viewer' });
+      .send({ name: 'Test User', email: 'test@test.com', password: 'pass123' });
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
@@ -55,6 +55,15 @@ describe('POST /api/v1/auth/register', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.data.user.role).toBe('viewer');
+  });
+
+  it('rejects attempts to self-assign an elevated role', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/register')
+      .send({ name: 'Test', email: 'adminish@test.com', password: 'pass123', role: 'admin' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
   });
 });
 
