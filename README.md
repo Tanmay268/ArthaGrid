@@ -3,8 +3,11 @@
 A production-quality REST API backend for a multi-role finance dashboard system. Built with Node.js, Express, MongoDB, and JWT — featuring RBAC, aggregation-powered analytics, soft deletes, audit logging, input validation, and Swagger documentation.
 
 ---
+## API Documentation
+👉 [View Swagger API Docs](https://arthagrid.onrender.com/api/docs/)
 
 ## Quick Start
+---
 
 ```bash
 # 1. Install dependencies
