@@ -16,12 +16,12 @@ const getOne = async (req, res) => {
 };
 
 const update = async (req, res) => {
-  const transaction = await transactionService.updateTransaction(req.params.id, req.body);
+  const transaction = await transactionService.updateTransaction(req.params.id, req.body, req.user._id);
   res.status(200).json({ success: true, data: transaction });
 };
 
 const remove = async (req, res) => {
-  const result = await transactionService.deleteTransaction(req.params.id);
+  const result = await transactionService.deleteTransaction(req.params.id, req.user._id);
   res.status(200).json({ success: true, ...result });
 };
 

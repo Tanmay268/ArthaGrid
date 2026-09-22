@@ -73,13 +73,13 @@ const getTransactionById = async (id) => {
 
 // ─── UPDATE ──────────────────────────────────────────────────────────────────
 
-const updateTransaction = async (id, data) => {
+const updateTransaction = async (id, data, userId) => {
   const transaction = await Transaction.findByIdAndUpdate(
     id,
-    data,
+    { ...data, updatedBy: userId },
     {
-      new: true,          // return updated document, not original
-      runValidators: true, // run schema validators on update too
+      returnDocument: 'after', // return updated document, not original
+      runValidators: true,     // run schema validators on update too
     }
   );
 
@@ -89,13 +89,13 @@ const updateTransaction = async (id, data) => {
 
 // ─── SOFT DELETE ─────────────────────────────────────────────────────────────
 
-const deleteTransaction = async (id) => {
+const deleteTransaction = async (id, userId) => {
   // findByIdAndUpdate bypasses the pre(/^find/) middleware, so we
   // use updateOne with $set to set isDeleted without triggering it
   const result = await Transaction.findByIdAndUpdate(
     id,
-    { $set: { isDeleted: true } },
-    { new: true }
+    { $set: { isDeleted: true, deletedAt: new Date(), deletedBy: userId } },
+    { returnDocument: 'after' }
   );
 
   if (!result) throw ApiError.notFound('Transaction not found');

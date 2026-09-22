@@ -24,9 +24,9 @@ const seed = async () => {
 
   // Create users
   const [admin, analyst, viewer] = await User.create([
-    { name: 'Alice Admin',  email: 'admin@test.com',   password: 'pass123', role: 'admin'   },
-    { name: 'Bob Analyst',  email: 'analyst@test.com', password: 'pass123', role: 'analyst' },
-    { name: 'Carol Viewer', email: 'viewer@test.com',  password: 'pass123', role: 'viewer'  },
+    { name: 'Alice Admin',  email: 'admin@test.com',   password: 'Password123', role: 'admin'   },
+    { name: 'Bob Analyst',  email: 'analyst@test.com', password: 'Password123', role: 'analyst' },
+    { name: 'Carol Viewer', email: 'viewer@test.com',  password: 'Password123', role: 'viewer'  },
   ]);
 
   // Generate 60 transactions spread across the last 6 months
@@ -49,9 +49,9 @@ const seed = async () => {
   await Transaction.insertMany(transactions);
 
   console.log('✓ Seeded: 3 users, 60 transactions');
-  console.log('  admin@test.com    / pass123  (admin)');
-  console.log('  analyst@test.com  / pass123  (analyst)');
-  console.log('  viewer@test.com   / pass123  (viewer)');
+  console.log('  admin@test.com    / Password123  (admin)');
+  console.log('  analyst@test.com  / Password123  (analyst)');
+  console.log('  viewer@test.com   / Password123  (viewer)');
   process.exit(0);
 };
 

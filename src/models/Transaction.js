@@ -42,9 +42,25 @@ const transactionSchema = new mongoose.Schema(
             ref: 'User',
             required: [true, 'User is required'],
         },
+        updatedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            default: null,
+        },
         isDeleted: {
             type: Boolean,
             default: false,
+            select: false,
+        },
+        deletedAt: {
+            type: Date,
+            default: null,
+            select: false,
+        },
+        deletedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            default: null,
             select: false,
         },
     },

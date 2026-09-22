@@ -4,12 +4,15 @@ const PERMISSIONS = {
     viewer: [
         'read:transactions',
         'read:dashboard',
+        'read:users:self',
+        'write:users:self',
     ],
     analyst: [
         'read:transactions',
         'read:dashboard',
         'read:analytics',
         'read:users:self',
+        'write:users:self',
     ],
     admin: [
         'read:transactions',
@@ -21,6 +24,7 @@ const PERMISSIONS = {
         'write:users',
         'delete:users',
         'read:users:self',
+        'write:users:self',
     ],
 };
 

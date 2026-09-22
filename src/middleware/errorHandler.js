@@ -1,24 +1,23 @@
-const ApiError = require('../utils/ApiError');
+const logger = require('../config/logger');
 
 const errorHandler = (err, req, res, next) => {
-    //Log full error internally
-    console.log(`$[{req.method}] ${req.path} ->`, err.message);
+    // Always log the full error internally, regardless of what we send back
+    logger.error({ err, method: req.method, path: req.path }, err.message);
 
-    //known operational error
-    if(err.isOperational){
+    // Known operational error
+    if (err.isOperational) {
         return res.status(err.statusCode).json({
             success: false,
             error: {
                 message: err.message,
                 details: err.details,
             },
-
         });
     }
 
-    //Mongoose validation error
-    if(err.name === 'ValidationError'){
-        const details = Object.values(err.errors).map(e => ({
+    // Mongoose validation error
+    if (err.name === 'ValidationError') {
+        const details = Object.values(err.errors).map((e) => ({
             field: e.path,
             message: e.message,
         }));
@@ -32,8 +31,8 @@ const errorHandler = (err, req, res, next) => {
         });
     }
 
-    //JWT errors
-    if(err.name === 'JsonWebTokenError'){
+    // JWT errors
+    if (err.name === 'JsonWebTokenError') {
         return res.status(401).json({
             success: false,
             error: {
@@ -41,7 +40,7 @@ const errorHandler = (err, req, res, next) => {
             },
         });
     }
-    if(err.name === 'TokenExpiredError'){
+    if (err.name === 'TokenExpiredError') {
         return res.status(401).json({
             success: false,
             error: {
@@ -50,8 +49,8 @@ const errorHandler = (err, req, res, next) => {
         });
     }
 
-    //Mongoose duplicate key (like if duplicate email)
-    if(err.code === 11000){
+    // Mongoose duplicate key (like if duplicate email)
+    if (err.code === 11000) {
         const field = Object.keys(err.keyValue)[0];
         return res.status(409).json({
             success: false,
@@ -61,20 +60,16 @@ const errorHandler = (err, req, res, next) => {
         });
     }
 
-    //Unknown error
-    // res.status(500).json({
-    //     success: false,
-    //     error: {
-    //         message: 'Something went wrong',
-    //     },
-    // });
+    // Unknown/unexpected error — never leak internals (stack traces, file
+    // paths, library details) to the client, especially in production.
+    const isProd = process.env.NODE_ENV === 'production';
     res.status(err.statusCode || 500).json({
-  success: false,
-  error: {
-    message: err.message,
-    stack: err.stack
-  }
-});
+        success: false,
+        error: {
+            message: isProd ? 'Something went wrong' : err.message,
+            ...(isProd ? {} : { stack: err.stack }),
+        },
+    });
 };
 
 module.exports = errorHandler;

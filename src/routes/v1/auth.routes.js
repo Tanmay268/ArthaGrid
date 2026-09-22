@@ -1,12 +1,13 @@
 const router = require('express').Router();
-const { register, login } = require('../../controllers/auth.controller');
+const { register, login, refresh, logout } = require('../../controllers/auth.controller');
 const validate = require('../../middleware/validate');
-const { registerSchema, loginSchema } = require('../../validators/auth.validator');
+const { registerSchema, loginSchema, refreshSchema, logoutSchema } = require('../../validators/auth.validator');
 const rateLimit = require('express-rate-limit');
 
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, //15 minutes
     max: 10,
+    skip: () => process.env.NODE_ENV === 'test', // real rate limiting stays on in dev/production
     message: {
         success: false,
         error: {
@@ -17,5 +18,7 @@ const authLimiter = rateLimit({
 
 router.post('/register', authLimiter, validate(registerSchema), register);
 router.post('/login', authLimiter, validate(loginSchema), login);
+router.post('/refresh', authLimiter, validate(refreshSchema), refresh);
+router.post('/logout', validate(logoutSchema), logout);
 
 module.exports = router;

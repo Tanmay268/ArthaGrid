@@ -1,0 +1,331 @@
+openapi: 3.0.3
+info:
+  title: ArthaGrid API
+  description: >
+    Finance transaction tracking and analytics API. Provides authentication,
+    role-based access control, transaction CRUD, and aggregated dashboard
+    analytics.
+  version: 1.1.0
+servers:
+  - url: /api/v1
+tags:
+  - name: Auth
+  - name: Transactions
+  - name: Dashboard
+  - name: Users
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Create a new account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, example: "Jane Doe" }
+                email: { type: string, format: email }
+                password: { type: string, format: password, example: "Password123" }
+                role: { type: string, enum: [viewer, analyst, admin], default: viewer }
+      responses:
+        '201': { description: Account created, content: { application/json: { schema: { $ref: '#/components/schemas/AuthResponse' } } } }
+        '409': { description: Email already registered }
+        '422': { description: Validation failed }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in and receive an access + refresh token pair
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        '200': { description: Login successful, content: { application/json: { schema: { $ref: '#/components/schemas/AuthResponse' } } } }
+        '401': { description: Invalid credentials }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Exchange a refresh token for a new access + refresh token pair
+      description: >
+        Refresh tokens are single-use (rotated on every call). Presenting an
+        already-used refresh token revokes every active session for that
+        user, since it indicates the token may have been stolen.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200': { description: New token pair issued }
+        '401': { description: Invalid, expired, or reused refresh token }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke a refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200': { description: Logged out (always succeeds, even for an already-invalid token) }
+
+  /transactions:
+    get:
+      tags: [Transactions]
+      summary: List transactions
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: type, schema: { type: string, enum: [income, expense] } }
+        - { in: query, name: category, schema: { type: string } }
+        - { in: query, name: startDate, schema: { type: string, format: date } }
+        - { in: query, name: endDate, schema: { type: string, format: date } }
+        - { in: query, name: minAmount, schema: { type: number } }
+        - { in: query, name: maxAmount, schema: { type: number } }
+        - { in: query, name: page, schema: { type: integer, default: 1 } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: sortBy, schema: { type: string, enum: [date, amount, createdAt] } }
+        - { in: query, name: sortOrder, schema: { type: string, enum: [asc, desc] } }
+      responses:
+        '200': { description: Paginated list of transactions }
+        '401': { description: Missing or invalid token }
+    post:
+      tags: [Transactions]
+      summary: Create a transaction (admin only)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransactionInput' }
+      responses:
+        '201': { description: Transaction created }
+        '403': { description: Role does not have write:transactions }
+
+  /transactions/{id}:
+    get:
+      tags: [Transactions]
+      summary: Get a single transaction
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdParam' }]
+      responses:
+        '200': { description: Transaction found }
+        '404': { description: Transaction not found (or soft-deleted) }
+    patch:
+      tags: [Transactions]
+      summary: Update a transaction (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdParam' }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransactionInput' }
+      responses:
+        '200': { description: Transaction updated }
+        '403': { description: Role does not have write:transactions }
+    delete:
+      tags: [Transactions]
+      summary: Soft-delete a transaction (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdParam' }]
+      responses:
+        '200': { description: Transaction soft-deleted }
+        '403': { description: Role does not have delete:transactions }
+
+  /dashboard/summary:
+    get:
+      tags: [Dashboard]
+      summary: Totals — income, expenses, net balance, savings rate
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: startDate, schema: { type: string, format: date } }
+        - { in: query, name: endDate, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Summary totals }
+
+  /dashboard/by-category:
+    get:
+      tags: [Dashboard]
+      summary: Totals grouped by category, split by income/expense
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Category breakdown }
+
+  /dashboard/trends:
+    get:
+      tags: [Dashboard]
+      summary: Time-series income/expense trends (weekly or monthly)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: period, schema: { type: string, enum: [monthly, weekly], default: monthly } }
+        - { in: query, name: year, schema: { type: integer } }
+      responses:
+        '200': { description: Time-series data }
+
+  /dashboard/recent:
+    get:
+      tags: [Dashboard]
+      summary: Most recent transactions
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, default: 5, maximum: 20 } }
+      responses:
+        '200': { description: Recent transactions }
+
+  /dashboard/overview:
+    get:
+      tags: [Dashboard]
+      summary: Combined summary, top categories, type breakdown, and 30-day comparison in one call
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Overview payload }
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get your own profile
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Current user profile }
+    patch:
+      tags: [Users]
+      summary: Update your own name and/or password
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                password: { type: string, format: password }
+      responses:
+        '200': { description: Profile updated }
+
+  /users:
+    get:
+      tags: [Users]
+      summary: List users (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: page, schema: { type: integer, default: 1 } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+        - { in: query, name: role, schema: { type: string, enum: [viewer, analyst, admin] } }
+        - { in: query, name: isActive, schema: { type: boolean } }
+      responses:
+        '200': { description: Paginated list of users }
+        '403': { description: Role does not have read:users }
+
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Get a user by id (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdParam' }]
+      responses:
+        '200': { description: User found }
+        '404': { description: User not found }
+    patch:
+      tags: [Users]
+      summary: Update a user's name, role, or active status (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdParam' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                role: { type: string, enum: [viewer, analyst, admin] }
+                isActive: { type: boolean }
+      responses:
+        '200': { description: User updated }
+
+  /users/{id}/deactivate:
+    patch:
+      tags: [Users]
+      summary: Deactivate a user account (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdParam' }]
+      responses:
+        '200': { description: User deactivated }
+        '400': { description: Cannot deactivate your own account }
+
+  /health:
+    get:
+      tags: []
+      summary: Basic liveness check
+      servers: [{ url: / }]
+      responses:
+        '200': { description: Service is up }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    IdParam:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        role: { type: string, enum: [viewer, analyst, admin] }
+        isActive: { type: boolean }
+    AuthResponse:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: object
+          properties:
+            user: { $ref: '#/components/schemas/User' }
+            accessToken: { type: string, description: "Short-lived JWT (default 15m)" }
+            refreshToken: { type: string, description: "Long-lived, single-use token (default 7d)" }
+    TransactionInput:
+      type: object
+      required: [amount, type, category]
+      properties:
+        amount: { type: number, minimum: 0.01 }
+        type: { type: string, enum: [income, expense] }
+        category: { type: string }
+        date: { type: string, format: date }
+        description: { type: string, maxLength: 500 }
+    Error:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        error:
+          type: object
+          properties:
+            message: { type: string }
