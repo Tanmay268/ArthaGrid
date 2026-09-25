@@ -8,23 +8,26 @@
 
 | | |
 |---|---|
-| **What it is** | A backend API (server) for tracking income and expenses |
-| **Built with** | Node.js, Express, MongoDB |
+| **What it is** | A personal-finance analytics platform — tracks income/expenses, analyzes/budgets/forecasts them, answers plain-language questions about your money, and has a real dashboard to look at all of it |
+| **Built with** | Node.js/Express/MongoDB backend, an optional Postgres for fast analytics history, an optional AI assistant (Google Gemini), and a React frontend |
 | **Who it's for** | Anyone needing to track money — one person or a small team |
-| **Type** | REST API — no visual app yet, but ready for a website or mobile app to be built on top of it |
-| **Status** | Working backend, security-hardened, tested, documented, and containerized |
+| **Type** | A REST API plus a React dashboard on top of it |
+| **Status** | Working backend and frontend, security-hardened, tested, documented, containerized, and designed to run entirely on free hosting |
 
 ---
 
 ## 1. What is ArthaGrid?
 
-ArthaGrid is the "engine" behind a finance-tracking app. It's the part that runs on a server, stores data safely, and answers questions like:
+ArthaGrid is a finance-tracking app with two halves: a server (the API, in `src/`) that stores data safely and does the actual work, and a dashboard (in `frontend/`) that's what you actually look at and click around in. Between the two, it answers questions like:
 
 - "Add this expense."
 - "Show me everything I spent last month."
 - "How much did I save this year?"
+- "Am I about to go over my Travel budget?"
+- "Is this transaction unusually large for this category?"
+- "Why did my expenses increase this month?" (answered in plain English by an AI assistant)
 
-It doesn't have a visible app screen of its own (yet) — it's built so that a website or mobile app can be connected to it later. Think of it like the kitchen of a restaurant: customers don't see it, but it's where all the real work happens.
+The API is also a normal REST API on its own — any other website or mobile app could call it directly instead of using ArthaGrid's own dashboard.
 
 The name comes from **"Artha"** (Sanskrit for wealth) and **"Grid"** (a structured system) — a structured system for managing money.
 
@@ -86,6 +89,15 @@ flowchart TD
 4. **View the dashboard** — see totals, spending by category, and trends over time, calculated automatically.
 5. **Edit or fix mistakes** — update or remove a transaction if something was entered wrong. Nothing is ever truly erased — a record is kept of what changed and who changed it, which matters for anything involving money.
 
+> 📸 **[Add screenshot here — The dashboard's Overview page]**
+> **What to capture:** The actual dashboard, not the raw API — the stat cards, spending chart, and recent transactions.
+> **How to get it:**
+> 1. Run the backend (`npm run dev`) and, in a second terminal, the frontend (`cd frontend && npm run dev`).
+> 2. Open `http://localhost:5173`, log in, and land on the Overview page.
+> 3. Take a screenshot of the page.
+> 4. Save it as `docs/screenshots/dashboard-overview.png` and replace this block with:
+>    `![Dashboard overview](./screenshots/dashboard-overview.png)`
+
 ---
 
 ## 5. What You Can Do With It (Endpoints)
@@ -100,6 +112,8 @@ An "endpoint" is just a specific thing you can ask the API to do. Here's the ful
 | Log in | Anyone with an account |
 | Stay logged in without re-entering a password | Anyone with a valid session |
 | Log out | Anyone logged in |
+
+The dashboard handles all of this automatically — its "stay logged in" step happens invisibly, via a cookie the browser manages on its own.
 
 ### Transactions (Income & Expenses)
 
@@ -128,6 +142,25 @@ An "endpoint" is just a specific thing you can ask the API to do. Here's the ful
 | View/update your own profile | Anyone logged in |
 | View all users | Admin |
 | Change a user's role or turn their account off | Admin |
+
+### Budgets
+
+| Action | Who can do it |
+|---|---|
+| See budgets and how much of each is spent this month | Viewer, Analyst, Admin |
+| Create or change a budget | Admin |
+
+### Analytics & Insights
+
+| Action | Who can do it |
+|---|---|
+| See deeper spending metrics (burn rate, weekday vs. weekend, category growth, etc.) | Analyst, Admin |
+| See a spending forecast for next month | Analyst, Admin |
+| See flagged unusual transactions | Analyst, Admin |
+| See detected recurring expenses (subscriptions, rent, etc.) | Analyst, Admin |
+| See the Financial Health Score | Analyst, Admin |
+| See plain-language insights ArthaGrid noticed on its own | Analyst, Admin |
+| Ask a question in plain language ("why did my spending increase?") and get an AI-written answer | Analyst, Admin |
 
 > 📸 **[Add screenshot here — Full list of endpoints]**
 > **What to capture:** The interactive API documentation page, showing every endpoint in one place.
@@ -173,6 +206,20 @@ A few choices shape how this project behaves. Here's each one in plain language:
 
 - **Fail loudly, not quietly** — if something important is missing when the server starts (like a security key), it refuses to start at all with a clear error, instead of running in a broken or insecure state.
 
+- **Every "smart" number comes with a plain-English formula, not a black box** — the Financial Health Score, the spending forecast, and "this looks unusual" flags are all built from simple, published math (averages, trend lines, how far a number is from the normal range) instead of a machine-learning model nobody can explain. You can always see *why* ArthaGrid says what it says.
+
+- **An unusual transaction is flagged, never blocked** — if you record an unusually large expense, ArthaGrid tells you so, but it still saves it. The system's job is to notice things, not to get in the way of you recording what actually happened.
+
+- **A second, small database (Postgres) just for pre-calculated numbers — optional** — MongoDB stays the one true copy of every transaction. If you connect a (free) Postgres database, it holds one ready-made summary table ("total spent per month") rebuilt automatically once a day, so the spending forecast stays fast without recalculating everything from scratch on every click. Don't connect one, and forecasting just calculates it live from MongoDB instead — nothing breaks either way.
+
+- **No "always-on" background robot** — a lot of finance apps use a constantly-running background worker to do heavy calculations. That kind of always-on process isn't free to host, so instead a scheduled job (using GitHub's free automation tool) simply asks the API to refresh its numbers once a day. Same result, no ongoing cost.
+
+- **The AI assistant only ever sees summary numbers, never your actual transactions — and that's checked automatically, not just promised** — when you ask it a question, ArthaGrid first calculates a small set of relevant numbers itself, and only sends those numbers (never a transaction's description or merchant name) to the AI service that writes the answer in plain English. An automated test double-checks this by looking at exactly what would be sent, so this isn't just something the documentation claims.
+
+- **The AI assistant is optional, like Postgres** — if you don't set up a (free) Google Gemini API key, asking it a question returns a clear "not available" response instead of the server breaking.
+
+- **The dashboard never has to remember your login token itself** — instead, the server hands it a special cookie that JavaScript literally can't read, and the browser quietly attaches it whenever it needs to prove who you are. This was actually corrected mid-build: the original plan used a cookie setting (`SameSite=Strict`) that would have completely broken once the dashboard and the server ended up on two different websites (which they do, on free hosting) — so it was fixed to a setting that works across sites, plus one extra safety check to make up for the protection that setting change gave up. That kind of "caught it while building, wrote down why" moment is exactly what [decisions.md](./decisions.md) is for.
+
 *(For the full reasoning behind every decision, including trade-offs, see [decisions.md](./decisions.md).)*
 
 ---
@@ -188,16 +235,20 @@ Beyond "it works," the project has been hardened the way a real, launched produc
 - ✅ **Documented** — every endpoint is described in an interactive page (`/api-docs`) that anyone can open and try out.
 - ✅ **Portable** — the whole system (server + database) can be started with a single command using Docker, so it runs the same way on any machine.
 - ✅ **Continuously checked** — every change is automatically tested before it's allowed to be merged, using GitHub Actions.
+- ✅ **Analytics you can trust** — the forecast, the anomaly flags, and the Financial Health Score are all built on simple, published formulas, each backed by an automated test that checks the math against known numbers.
+- ✅ **Free-tier-ready today** — the API, the dashboard, MongoDB, the optional Postgres analytics store, the scheduled rollup job, and the AI assistant are all built and tested against free-tier hosting (Render, Vercel, Atlas, Neon, GitHub Actions, Google Gemini); actually deploying them just means creating those free accounts — see [deployment.md](./deployment.md) for the step-by-step walkthrough.
 
 ---
 
 ## 8. What's Next
 
-The system is a solid, working foundation, but a few things are intentionally left for later — not forgotten, just not needed yet:
+The originally planned feature set (analytics, budgets, forecasting, the AI assistant, and the dashboard) is now fully built. A few things are still intentionally left for later — not forgotten, just not needed yet:
 
 - A full history of every change to a record (right now it remembers the *latest* change, not every past one).
 - The ability to create custom roles beyond Viewer/Analyst/Admin.
 - Extra safeguards a bank or finance company would eventually want, like requiring a second login step for admins, or storing money amounts in a way that avoids tiny rounding errors at large scale.
+- Teaching ArthaGrid to guess a transaction's category automatically from a short description (it needs enough of your own real history first to learn from).
+- Automatic weekly email reports, and a separate dashboard for administrators to see system-wide usage.
 
 The full, detailed list — with reasons for each — is in [upgrades.md](./upgrades.md).
 
@@ -213,3 +264,4 @@ This report is meant to be a quick, friendly overview. For more depth:
 | [architecture.md](./architecture.md) | A deeper technical look at how the system is built, with detailed diagrams |
 | [decisions.md](./decisions.md) | The full reasoning and trade-offs behind every major technical choice |
 | [upgrades.md](./upgrades.md) | Everything that's been improved, and what's planned next |
+| [deployment.md](./deployment.md) | Step-by-step guide to putting ArthaGrid online for free |

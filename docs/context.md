@@ -2,9 +2,9 @@
 
 ## What is ArthaGrid?
 
-ArthaGrid is a backend API for tracking financial transactions. It lets people record money coming in and going out (transactions), and gives them dashboards that summarize their spending and income — totals, breakdowns by category, trends over time, and a quick overview.
+ArthaGrid is a personal-finance analytics platform: an API plus a React dashboard (`frontend/`) that together let people record money coming in and going out, and understand what that money is doing — totals, category breakdowns, trends, budgets, spending forecasts, unusual-transaction flags, a Financial Health Score, plain-language insights, and an AI assistant that answers questions like "why did my expenses go up?"
 
-Think of it as the engine behind a budgeting or finance-tracking product. It doesn't have a visual interface itself — it's a REST API that a website or mobile app would call.
+The API (`src/`) is the engine; the dashboard is the first visual interface built on top of it — though the API is still a normal REST API any other website or mobile app could call directly instead.
 
 "Artha" is a Sanskrit word meaning wealth or prosperity, and "Grid" suggests a structured system — so the name roughly means "a structured system for managing wealth."
 
@@ -30,12 +30,28 @@ The project is explicitly aimed at the standard a finance company should hold a 
 
 ## Current state of the project
 
-- **Working:** registration/login with short-lived access tokens and revocable refresh tokens, role-based permissions, full CRUD for transactions (with soft delete and an audit trail of who created/updated/deleted each one), a full set of dashboard/analytics endpoints, and self-service plus admin-driven user management.
-- **Automated tests:** a Jest + Supertest suite runs against an in-memory MongoDB (no real database needed to run tests), covering auth, RBAC, transaction CRUD, dashboard calculations, and user management. Wired into GitHub Actions so it runs on every push/PR.
+- **Working:** registration/login with short-lived access tokens and revocable refresh tokens (the refresh token also set as an httpOnly cookie for the browser), role-based permissions, full CRUD for transactions (with soft delete and an audit trail of who created/updated/deleted each one, plus an optional `merchant` field), a full set of dashboard/analytics endpoints, budgets with live progress tracking, an expanded analytics engine (metrics, forecasting, anomaly detection, recurring-expense detection, a Financial Health Score, and rule-based insights), an optional Postgres rollup pipeline that speeds up the forecast endpoint once connected, an optional AI Financial Copilot for plain-language Q&A, a React dashboard (`frontend/`) covering all of the above, and self-service plus admin-driven user management.
+- **Automated tests:** a Jest + Supertest suite runs against an in-memory MongoDB (no real database needed to run tests), covering auth (including the refresh-token cookie and its CSRF guard), RBAC, transaction CRUD, dashboard calculations, budgets, the analytics engine, the rollup endpoint's auth guard, the AI copilot's privacy guarantee (via a mocked Gemini call), and user management. Wired into GitHub Actions so it runs on every push/PR. The frontend is verified by `tsc` (zero type errors) and a production `vite build`, rather than a separate frontend test suite.
 - **Documented:** every route is described in an OpenAPI spec, browsable at `/api-docs` once the server is running.
 - **Runnable via Docker:** `docker compose up` starts the API and a local MongoDB together, no local Node/Mongo install required.
-- **Dev-only tooling:** `seed.js` fills the database with sample users and transactions for local testing; `clean.js` wipes it. Neither should ever be pointed at a production database.
+- **Dev-only tooling:** `seed.js` fills the database with sample users, transactions, and budgets for local testing (including a deliberately unusual transaction and recurring monthly charges, so anomaly/recurring detection have something real to find); `clean.js` wipes it. Neither should ever be pointed at a production database.
 - **Deliberately not built yet:** a full, immutable audit-log history (today's `updatedBy`/`deletedBy` fields record the *latest* actor, not every historical change); database-backed custom roles (the current three fixed roles are hard-coded, which is intentionally simple — see decisions.md); and the further finance-specific items listed at the end of upgrades.md. None of these were skipped by accident — each has a note explaining why it's not worth building until there's a concrete need for it.
+
+## What's new in ArthaGrid 2.0
+
+The project moved beyond "an API that stores transactions and totals them up" toward a real personal-finance product: one that notices things about someone's money, not just reports numbers back — a proper analytics layer, budgets, a financial health score, forecasting, anomaly detection, a small AI assistant that answers plain-language questions like "why did my expenses go up?", and an actual visual dashboard (a React frontend), instead of only a REST API a developer could talk to. All four build stages (A–D) are now complete — see [upgrades.md](./upgrades.md) for the detailed history of what was built in each.
+
+The one hard constraint driving every choice here: **the whole thing has to keep running for free.** That ruled out a lot of the "how a big company would build this" answers — a fleet of microservices, a job-queue-and-worker pipeline, self-hosted monitoring — because none of those are actually free to run continuously. Where a bigger-scale answer wasn't realistic on a free tier, a smaller, honest equivalent was chosen instead, and written down as a deliberate trade-off rather than pretended away:
+
+- **Analytics stay inside the same service**, not split into separate microservices — one free web service instead of several.
+- **A second, free database (Postgres) holds only one pre-computed analytics number set** — monthly totals — rebuilt on a schedule from the main MongoDB data. Not a second source of truth, just a faster place to read history from; connecting it is optional, and everything computes live from MongoDB when it isn't connected.
+- **A scheduled GitHub Actions job stands in for a background worker**, since free hosting doesn't include a free always-on worker process.
+- **The AI copilot only ever sees pre-computed summary numbers**, never raw transactions — because sending real financial detail to a third-party AI service, even a free one, is not something to do without a clear line drawn around what's shared. This is checked by an automated test, not just documented.
+- **The frontend and API are deployed on different domains** (Vercel and Render), which meant correcting a piece of the original plan while building it: the refresh-token cookie needed `SameSite=None` instead of the originally planned `Strict` to work cross-domain at all, which in turn needed a small CSRF-mitigating header to stay safe. See [decisions.md](./decisions.md) #21 for the full story.
+
+None of the pieces above are "activated" until you actually create the matching free account and set its environment variable (Neon for Postgres, Google AI Studio for Gemini, Render/Vercel for hosting) — see [deployment.md](./deployment.md). The code and tests are what's "built"; the account is a separate, deliberate step you take when you're ready to actually deploy.
+
+See [decisions.md](./decisions.md) (entries #17–21) for the full reasoning behind each of these, and [upgrades.md](./upgrades.md) for exactly what's built vs. what's still on the roadmap (auto-categorization, scheduled email reports, an admin analytics dashboard, and a few other items from the original wishlist were deliberately left for later — the reasons are listed there, not hidden).
 
 ## Why this project exists
 

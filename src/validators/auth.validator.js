@@ -14,12 +14,16 @@ const loginSchema = Joi.object({
     password: Joi.string().required(),
 });
 
+// Optional here, not required — a browser client relies on the httpOnly
+// refresh-token cookie instead of sending it in the body (see
+// extractRefreshToken middleware, which enforces that *some* source
+// provided a token before either route handler ever runs).
 const refreshSchema = Joi.object({
-    refreshToken: Joi.string().required(),
+    refreshToken: Joi.string(),
 });
 
 const logoutSchema = Joi.object({
-    refreshToken: Joi.string().required(),
+    refreshToken: Joi.string(),
 });
 
 module.exports = { registerSchema, loginSchema, refreshSchema, logoutSchema };

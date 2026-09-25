@@ -1,0 +1,35 @@
+name: Analytics rollup
+
+# Stands in for a background worker (see docs/decisions.md #18) — no free
+# hosting tier used by this project includes a free always-on worker
+# process, so a scheduled workflow calling a protected endpoint gets the
+# same "run this daily" behavior without needing one.
+#
+# Requires two repository secrets (Settings -> Secrets and variables ->
+# Actions), documented in docs/deployment.md:
+#   RENDER_API_URL  - the deployed API's base URL, e.g. https://arthagrid.onrender.com
+#   CRON_SECRET     - must match the CRON_SECRET env var set on the API itself
+
+on:
+  schedule:
+    # 03:17 UTC daily — an off-the-hour minute is kinder to GitHub's shared
+    # scheduler than :00, and the exact time doesn't matter for a job like this.
+    - cron: '17 3 * * *'
+  workflow_dispatch: {} # lets you trigger it manually from the Actions tab, to test it
+
+jobs:
+  rollup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call the internal rollup endpoint
+        run: |
+          response=$(curl --silent --show-error --fail-with-body \
+            --output response.json --write-out "%{http_code}" \
+            --request POST "${RENDER_API_URL}/api/v1/internal/jobs/rollup" \
+            --header "X-Cron-Secret: ${CRON_SECRET}")
+
+          echo "HTTP status: $response"
+          cat response.json
+        env:
+          RENDER_API_URL: ${{ secrets.RENDER_API_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

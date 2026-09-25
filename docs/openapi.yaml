@@ -3,9 +3,13 @@ info:
   title: ArthaGrid API
   description: >
     Finance transaction tracking and analytics API. Provides authentication,
-    role-based access control, transaction CRUD, and aggregated dashboard
-    analytics.
-  version: 1.1.0
+    role-based access control, transaction CRUD, budgets, a full
+    analytics/insights engine (metrics, forecasting, anomaly detection,
+    recurring-expense detection, a Financial Health Score, and rule-based
+    insights), and an AI Financial Copilot for plain-language Q&A. A React
+    dashboard (frontend/) is built on top of this API — see the main repo's
+    docs/architecture.md.
+  version: 1.4.0
 servers:
   - url: /api/v1
 tags:
@@ -13,12 +17,19 @@ tags:
   - name: Transactions
   - name: Dashboard
   - name: Users
+  - name: Budgets
+  - name: Analytics
+  - name: Copilot
 
 paths:
   /auth/register:
     post:
       tags: [Auth]
       summary: Create a new account
+      description: >
+        Also sets the refresh token as an httpOnly cookie (scoped to
+        /api/v1/auth), for the browser frontend — the JSON body's
+        refreshToken is unchanged and still works for non-browser clients.
       requestBody:
         required: true
         content:
@@ -40,6 +51,10 @@ paths:
     post:
       tags: [Auth]
       summary: Log in and receive an access + refresh token pair
+      description: >
+        Also sets the refresh token as an httpOnly cookie (scoped to
+        /api/v1/auth), for the browser frontend — the JSON body's
+        refreshToken is unchanged and still works for non-browser clients.
       requestBody:
         required: true
         content:
@@ -62,34 +77,47 @@ paths:
         Refresh tokens are single-use (rotated on every call). Presenting an
         already-used refresh token revokes every active session for that
         user, since it indicates the token may have been stolen.
+
+
+        Accepts the token from either the JSON body (`refreshToken`) or the
+        httpOnly cookie the browser sends automatically — whichever is
+        present. When the token comes from the cookie, the request must
+        also include an `X-ArthaGrid-Client: web` header (a CSRF guard the
+        cookie's cross-domain `SameSite=None` setting makes necessary); a
+        body-supplied token needs no such header. Also refreshes the cookie
+        itself, on the same rotation as the JSON token.
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               type: object
-              required: [refreshToken]
               properties:
-                refreshToken: { type: string }
+                refreshToken: { type: string, description: "Omit if relying on the cookie instead" }
       responses:
-        '200': { description: New token pair issued }
+        '200': { description: New token pair issued (and cookie refreshed) }
+        '400': { description: No refresh token in either the body or a cookie }
         '401': { description: Invalid, expired, or reused refresh token }
+        '403': { description: "Cookie-sourced token missing the required X-ArthaGrid-Client header" }
 
   /auth/logout:
     post:
       tags: [Auth]
       summary: Revoke a refresh token
+      description: >
+        Accepts the token from either the JSON body or the httpOnly cookie,
+        the same as /auth/refresh (including the required header for a
+        cookie-sourced token), and always clears the cookie.
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               type: object
-              required: [refreshToken]
               properties:
-                refreshToken: { type: string }
+                refreshToken: { type: string, description: "Omit if relying on the cookie instead" }
       responses:
         '200': { description: Logged out (always succeeds, even for an already-invalid token) }
+        '400': { description: No refresh token in either the body or a cookie }
+        '403': { description: "Cookie-sourced token missing the required X-ArthaGrid-Client header" }
 
   /transactions:
     get:
@@ -113,6 +141,10 @@ paths:
     post:
       tags: [Transactions]
       summary: Create a transaction (admin only)
+      description: >
+        The response includes a non-blocking `unusual: { flagged, score,
+        sampleSize }` anomaly hint (a leave-one-out z-score against the
+        category's history) — it never rejects the write, only flags it.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -273,6 +305,156 @@ paths:
         '200': { description: User deactivated }
         '400': { description: Cannot deactivate your own account }
 
+  /budgets:
+    get:
+      tags: [Budgets]
+      summary: List budgets with current-month progress
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Budgets with spent/remaining/percentage/isOverBudget for the current calendar month }
+    post:
+      tags: [Budgets]
+      summary: Create a monthly budget for a category (admin only)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BudgetInput' }
+      responses:
+        '201': { description: Budget created }
+        '403': { description: Role does not have write:budgets }
+        '409': { description: A budget for this category already exists }
+
+  /budgets/{id}:
+    patch:
+      tags: [Budgets]
+      summary: Update a budget's limit or active status (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdParam' }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BudgetInput' }
+      responses:
+        '200': { description: Budget updated }
+    delete:
+      tags: [Budgets]
+      summary: Remove a budget (admin only)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/IdParam' }]
+      responses:
+        '200': { description: Budget removed }
+
+  /analytics/metrics:
+    get:
+      tags: [Analytics]
+      summary: Expanded financial, behavioral, and comparative metrics
+      description: >
+        Burn rate, expense-to-income ratio, average daily/monthly spending,
+        most expensive/frequent category, weekday vs. weekend spending, and
+        this-month-vs-last-month category growth.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: startDate, schema: { type: string, format: date } }
+        - { in: query, name: endDate, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Metrics payload }
+
+  /analytics/forecast:
+    get:
+      tags: [Analytics]
+      summary: Spending forecast (moving average / linear regression)
+      description: >
+        A simple, explainable statistical forecast over monthly history —
+        not a black-box ML model — with the historical data it was built
+        from included in the response for transparency.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: months, schema: { type: integer, default: 3, minimum: 1, maximum: 12 } }
+        - { in: query, name: metric, schema: { type: string, enum: [income, expenses, net], default: expenses } }
+      responses:
+        '200': { description: Forecast payload with method, history, and projection }
+
+  /analytics/anomalies:
+    get:
+      tags: [Analytics]
+      summary: Statistically unusual transactions (leave-one-out z-score)
+      description: >
+        Flags transactions whose amount is a statistical outlier compared
+        to every *other* transaction in their category. Presented as an
+        ArthaGrid-computed signal, not a certainty.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: List of flagged transactions with their z-score }
+
+  /analytics/recurring:
+    get:
+      tags: [Analytics]
+      summary: Detected recurring expenses
+      description: >
+        Groups transactions by merchant (when present) or by category and
+        similar amount, and flags groups recurring at a consistent weekly
+        or monthly interval (e.g. subscriptions, rent).
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: List of detected recurring expenses }
+
+  /analytics/health-score:
+    get:
+      tags: [Analytics]
+      summary: Financial Health Score, with its component breakdown
+      description: >
+        A transparent, weighted score (savings rate, cash-flow stability,
+        spending consistency, budget adherence, emergency reserve) —
+        documented as an ArthaGrid metric with a published formula
+        (included in the response), not an objective financial truth.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Score and its component breakdown }
+
+  /analytics/insights:
+    get:
+      tags: [Analytics]
+      summary: Rule-based, plain-language insights
+      description: >
+        Computed live from the current data (spending patterns, budget
+        pace, forecasts, anomalies, recurring expenses) — not pushed
+        proactively, since that would need a background worker this
+        project's free-tier hosting doesn't have.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: List of insight objects (type, text, backing data) }
+
+  /copilot/ask:
+    post:
+      tags: [Copilot]
+      summary: Ask a plain-language question about your finances
+      description: >
+        Answered by Google Gemini (free tier), grounded ONLY in a small,
+        explicitly allow-listed bundle of pre-computed aggregate numbers
+        (totals, savings rate, top category changes, anomaly counts) that
+        the response echoes back as `aggregates` — raw transaction
+        descriptions or merchant names are never sent. Rate-limited to 20
+        requests/hour, tighter than other endpoints, to respect Gemini's
+        free-tier limits.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question: { type: string, minLength: 3, maxLength: 300, example: "Why did my expenses increase this month?" }
+      responses:
+        '200': { description: "Answer, grounded in the aggregates also included in the response" }
+        '400': { description: Validation failed (question missing or wrong length) }
+        '403': { description: Role does not have read:analytics }
+        '429': { description: Copilot rate limit exceeded }
+        '503': { description: "AI copilot not configured (missing GEMINI_API_KEY) or Gemini temporarily unavailable" }
+
   /health:
     get:
       tags: []
@@ -319,8 +501,16 @@ components:
         amount: { type: number, minimum: 0.01 }
         type: { type: string, enum: [income, expense] }
         category: { type: string }
+        merchant: { type: string, maxLength: 100, nullable: true, description: "Optional — improves recurring-expense detection", example: "Netflix" }
         date: { type: string, format: date }
         description: { type: string, maxLength: 500 }
+    BudgetInput:
+      type: object
+      required: [category, monthlyLimit]
+      properties:
+        category: { type: string, description: "One of the expense categories (income categories aren't budgetable)" }
+        monthlyLimit: { type: number, minimum: 0.01 }
+        isActive: { type: boolean, default: true }
     Error:
       type: object
       properties:

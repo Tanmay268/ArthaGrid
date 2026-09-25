@@ -1,11 +1,20 @@
 const { Transaction } = require('../models/Transaction');
 const ApiError = require('../utils/ApiError');
+const anomalyService = require('./anomaly.service');
 
 // ─── CREATE ─────────────────────────────────────────────────────────────────
 
 const createTransaction = async (data, userId) => {
   const transaction = await Transaction.create({ ...data, createdBy: userId });
-  return transaction;
+
+  // Non-blocking anomaly hint — never rejects the write, just flags it for
+  // the caller (see decisions.md / anomaly.service.js). Only expenses are
+  // scored; an unusually large paycheck isn't a "concern" the same way.
+  const unusual = transaction.type === 'expense'
+    ? await anomalyService.scoreTransaction(transaction.category, transaction.amount, transaction._id)
+    : { flagged: false, score: 0 };
+
+  return { transaction, unusual };
 };
 
 // ─── GET ALL (with filtering, sorting, pagination) ───────────────────────────

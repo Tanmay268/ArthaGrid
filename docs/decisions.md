@@ -163,3 +163,59 @@ Refresh tokens are also **rotated**: each `/auth/refresh` call revokes the token
 **Why:** Transactions reference their creator via `createdBy`, and now also `updatedBy`/`deletedBy`. Hard-deleting a user would either orphan that reference or require cascading deletes that destroy financial history — neither is acceptable for records a finance company needs to be able to explain later. Deactivation preserves the full audit trail while still preventing the account from being used.
 
 **Trade-off:** Deactivated accounts accumulate in the database indefinitely with no built-in archival process, the same trade-off already accepted for soft-deleted transactions (decision #6).
+
+---
+
+**A note on entries #17–21:** every decision in this document, including #17–21 below, describes something already built and running — check [upgrades.md](./upgrades.md) if you want the build/test status of each piece rather than just the reasoning behind it.
+
+### 17. Postgres for analytics rollups, alongside MongoDB
+
+**Decision:** Introduce a second database — Postgres (hosted free on Neon) — used only to hold a pre-computed analytics rollup table (`monthly_metrics`), populated on a schedule from MongoDB. MongoDB remains the only system of record for transactions, users, and budgets. (The original design sketched five rollup tables; only the one an endpoint actually reads — monthly totals, for the forecast endpoint's history — was built. The rest were cut rather than shipped as write-only tables nobody consumes; see [architecture.md](./architecture.md) for that reasoning.)
+
+**Why:** This directly revisits decision #2 ("don't introduce a second database unless you can justify why"). The justification: multi-month trend and forecast queries are read-heavy and benefit from a shape that's cheap to query repeatedly, and MongoDB Atlas's free tier caps throughput at roughly 100 operations/second — running heavy historical aggregation on the same cluster that serves live transaction reads/writes competes for that same limited budget. A dedicated free relational store, populated by a scheduled rebuild rather than live writes, keeps the two workloads from fighting each other. Because every row in Postgres is derived and rebuildable from MongoDB, it never becomes a second source of truth — if it were ever lost entirely, the next scheduled rollup would recreate it.
+
+**Trade-off:** A second database is genuinely more moving parts — a second connection to manage, a second set of credentials, and a second thing that can be down. Rollup data is only as fresh as the last scheduled run (see decision #18), not real-time. This is accepted specifically because the data is disposable and rebuildable, which is what makes it different from the kind of "second database" decision #2 originally warned against. It's also treated as strictly optional at the code level — `POSTGRES_URL` unset, or Postgres unreachable, just means the forecast endpoint falls back to computing its history live from MongoDB (see `src/config/postgres.js`), never a hard failure.
+
+---
+
+### 18. Scheduled computation via external cron, not a background job queue
+
+**Decision:** Heavier or periodic computation (rebuilding analytics rollups, and any future scheduled reports) runs via a GitHub Actions scheduled workflow calling a secret-protected internal HTTP endpoint (`POST /api/v1/internal/jobs/rollup`), rather than a job queue (e.g. BullMQ) backed by a persistent worker process.
+
+**Why:** This project is deployed entirely on free-tier hosting, and none of the realistic free hosting options (Render, Railway, Fly.io) include a free always-on background-worker process — only a free web service, which sleeps when idle. A job queue needs something to keep consuming it; without a free worker to run, BullMQ/Redis would add a dependency with nothing free to run it on. A scheduled GitHub Actions workflow is free (GitHub Actions gives a generous free monthly minute allowance, with no cap at all on public repos) and needs nothing else to be hosted — it just calls an existing endpoint on a timer.
+
+**Trade-off:** No true event-driven pipeline — data is only as fresh as the last scheduled run, and there's no queue to retry a failed job automatically (a failed run just waits for the next scheduled tick, or can be re-triggered manually). The internal endpoint is authenticated with a static shared secret rather than a user session, which is a different (simpler, but less flexible) trust model than the rest of the API and needs to be kept out of the public API documentation.
+
+---
+
+### 19. AI Financial Copilot built on Google Gemini's free API tier, aggregates only
+
+**Decision:** The natural-language "ask ArthaGrid" feature calls Google's Gemini API (free tier), and only ever sends it pre-computed aggregate figures the analytics engine already produced (e.g. "Food spending is up 18% this month, +₹2,340") — never raw transaction descriptions, merchant names, or account details.
+
+**Why:** Gemini's free tier is, as of when this was researched, the only mainstream LLM API with a genuinely free, non-expiring quota suitable for a project with no operating budget. Restricting what's sent to pre-aggregated numbers bounds the exposure: even in the worst case, what leaves the server is a handful of already-derived statistics, not a user's actual spending history.
+
+**Trade-off:** Google's free tier terms allow inputs to be used to improve their products — this is a real, disclosed trade-off of using a free LLM API for something touching financial data, accepted deliberately rather than glossed over. There's also no real intent-classification step in this version: every question sends the same fixed bundle of aggregates regardless of what was actually asked, which works for the "why did my spending change" style questions this was built for but won't generalize to arbitrary questions without further work.
+
+Like Postgres (decision #17), this is optional at the code level: without `GEMINI_API_KEY` configured, `POST /api/v1/copilot/ask` returns a `503` rather than the server failing to start or the endpoint crashing. And the "never raw transaction data" promise isn't just a comment — `tests/copilot.test.js` mocks the Gemini call and asserts a seeded transaction's `merchant`/`description` text never appears in the request actually sent.
+
+---
+
+### 20. Staying a single service, not splitting into microservices
+
+**Decision:** All new analytics, budgeting, and copilot functionality is added as new modules inside the existing single Express application (new services/controllers/routes, same layered architecture), not as separate deployed services.
+
+**Why:** A microservices split (separate Auth/Transaction/Analytics/ML deployments) was considered, since it's how a larger-scale version of this system would eventually look. It was rejected for now because it directly conflicts with staying on free-tier hosting: each service would need its own free hosting instance, each with its own independent cold-start delay, plus inter-service network calls and separate deployment pipelines — real operational cost with no corresponding benefit at this project's actual traffic volume. This is the same reasoning as decision #1, reapplied.
+
+**Trade-off:** All analytics computation runs in the same process as everything else, so a very expensive analytics query could, in principle, slow down unrelated requests. At this data scale that's a theoretical concern, not an observed one — worth revisiting only if it actually happens.
+
+---
+
+### 21. Refresh token also set as an httpOnly cookie, for the browser frontend
+
+**Decision:** Now that a browser-based frontend exists, `POST /auth/login`, `POST /auth/register`, and `POST /auth/refresh` also set the refresh token as an `httpOnly` cookie (scoped to the `/api/v1/auth` path), in addition to returning it in the JSON response body exactly as before. `POST /auth/refresh` and `POST /auth/logout` now accept the token from either source — the cookie or the JSON body — via `extractRefreshToken` middleware, so existing non-browser API clients that send `{ refreshToken }` in the body keep working completely unchanged.
+
+**Why:** The original design (decision #3) assumed a generic API client and left storage entirely up to the caller. A browser SPA that stores a long-lived refresh token itself — typically in `localStorage`, since JavaScript needs to read it to use it — makes that token readable by any script that manages to run on the page (e.g. via a dependency vulnerability), which is a meaningfully worse exposure than the access token's short 15-minute life already limits. An `httpOnly` cookie can't be read by JavaScript at all, closing that specific exposure for the one client (the browser frontend) that would otherwise need to hold it directly. The frontend never sees or stores a refresh token; it just relies on the browser attaching the cookie automatically, and does a silent `POST /auth/refresh` on every page load to trade it for a fresh access token.
+
+**Cookie attributes, and a correction made while actually building this:** the original plan called for `SameSite=Strict`, written before the deployment topology was pinned down. That would have been wrong — the frontend (Vercel) and the API (Render) are deployed on different domains, and `SameSite=Strict` (or even `Lax`) blocks a cookie from being sent on cross-site requests at all, which would make the cookie useless for exactly the client it exists for. The actual settings, in `src/utils/cookies.js`: `Secure` + `SameSite=None` in production (required together — browsers only honor `SameSite=None` over HTTPS), and `SameSite=Lax` without `Secure` for local `http://` development, where frontend and API differ only by port and are therefore still "same-site" by the cookie spec's own definition (the site comparison ignores port).
+
+**Trade-off:** The API now has two ways to carry the same token (JSON body and cookie), which is slightly more surface area. More importantly, `SameSite=None` reopens a CSRF door that `Strict`/`Lax` would otherwise close: a plain cross-site `<form>` POST rides along with the ambient cookie, no JavaScript required, and could trigger a refresh-token rotation the legitimate frontend didn't ask for. This is mitigated with a custom header (`X-ArthaGrid-Client: web`), required by `extractRefreshToken` whenever the token's source is the cookie rather than the body: a bare HTML form can never set a custom header, and a script that does set one forces a CORS preflight, which only succeeds for the configured `CORS_ORIGIN`. This is a standard, lightweight mitigation for cookie+JSON APIs — not a full CSRF-token scheme, which would be more machinery than this narrow surface (one endpoint, no state-changing side effect beyond rotating a token that's revocable anyway) justifies. The cookie itself stays deliberately narrow in scope: only ever read for the refresh/logout flow; the access token continues to be sent as a normal `Authorization` header on every other request, unaffected by any of this.

@@ -1,8 +1,8 @@
 const transactionService = require('../services/transaction.service');
 
 const create = async (req, res) => {
-  const transaction = await transactionService.createTransaction(req.body, req.user._id);
-  res.status(201).json({ success: true, data: transaction });
+  const { transaction, unusual } = await transactionService.createTransaction(req.body, req.user._id);
+  res.status(201).json({ success: true, data: transaction, unusual });
 };
 
 const getAll = async (req, res) => {

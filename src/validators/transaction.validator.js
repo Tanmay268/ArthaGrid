@@ -6,6 +6,7 @@ const createTransactionSchema = Joi.object({
             .messages({ 'number.positive': 'Amount must be a positive number' }),
   type: Joi.string().valid(...TRANSACTION_TYPES).required(),
   category: Joi.string().valid(...CATEGORIES).required(),
+  merchant: Joi.string().trim().max(100).allow('', null).default(null),
   date: Joi.date().iso().max('now').default(() => new Date())
             .messages({ 'date.max': 'Date cannot be in the future' }),
   description: Joi.string().max(500).allow('').default(''),
@@ -15,6 +16,7 @@ const updateTransactionSchema = Joi.object({
   amount: Joi.number().positive().precision(2),
   type: Joi.string().valid(...TRANSACTION_TYPES),
   category: Joi.string().valid(...CATEGORIES),
+  merchant: Joi.string().trim().max(100).allow('', null),
   date: Joi.date().iso().max('now'),
   description: Joi.string().max(500).allow(''),
 }).min(1).messages({ 'object.min': 'At least one field is required for update' });

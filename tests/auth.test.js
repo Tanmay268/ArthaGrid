@@ -135,3 +135,90 @@ describe('POST /api/v1/auth/logout', () => {
         expect(refreshRes.status).toBe(401);
     });
 });
+
+// The browser frontend relies on the httpOnly cookie instead of holding the
+// refresh token itself (decisions.md #21) — these tests drive that path
+// specifically, separate from the body-based flow every test above uses.
+describe('httpOnly refresh-token cookie (decisions.md #21)', () => {
+    const getCookieValue = (res, name) => {
+        const setCookieHeaders = res.headers['set-cookie'] || [];
+        const match = setCookieHeaders.find((c) => c.startsWith(`${name}=`));
+        return match ? match.split(';')[0].split('=')[1] : null;
+    };
+
+    it('sets an httpOnly refresh-token cookie on register and login', async () => {
+        const res = await request(app).post('/api/v1/auth/register').send({
+            name: 'Jane Doe',
+            email: 'cookie-register@test.com',
+            password: 'Password123',
+        });
+
+        const setCookieHeaders = res.headers['set-cookie'] || [];
+        const refreshCookie = setCookieHeaders.find((c) => c.startsWith('refreshToken='));
+
+        expect(refreshCookie).toBeDefined();
+        expect(refreshCookie).toMatch(/HttpOnly/i);
+        expect(getCookieValue(res, 'refreshToken')).toBe(res.body.data.refreshToken);
+    });
+
+    it('accepts a refresh via the cookie alone, given the required client header', async () => {
+        const register = await request(app).post('/api/v1/auth/register').send({
+            name: 'Jane Doe',
+            email: 'cookie-refresh@test.com',
+            password: 'Password123',
+        });
+        const cookieValue = getCookieValue(register, 'refreshToken');
+
+        const res = await request(app)
+            .post('/api/v1/auth/refresh')
+            .set('Cookie', `refreshToken=${cookieValue}`)
+            .set('X-ArthaGrid-Client', 'web')
+            .send({}); // no body token — the cookie is the only source
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.accessToken).toEqual(expect.any(String));
+        // The cookie is refreshed too, on the same rotation as the JSON token.
+        expect(getCookieValue(res, 'refreshToken')).toBe(res.body.data.refreshToken);
+    });
+
+    it('rejects a cookie-only refresh missing the required client header (CSRF guard)', async () => {
+        const register = await request(app).post('/api/v1/auth/register').send({
+            name: 'Jane Doe',
+            email: 'cookie-csrf@test.com',
+            password: 'Password123',
+        });
+        const cookieValue = getCookieValue(register, 'refreshToken');
+
+        const res = await request(app)
+            .post('/api/v1/auth/refresh')
+            .set('Cookie', `refreshToken=${cookieValue}`)
+            .send({}); // no X-ArthaGrid-Client header, simulating a cross-site <form> POST
+
+        expect(res.status).toBe(403);
+    });
+
+    it('rejects a refresh with neither a body token nor a cookie', async () => {
+        const res = await request(app).post('/api/v1/auth/refresh').send({});
+        expect(res.status).toBe(400);
+    });
+
+    it('clears the cookie on logout', async () => {
+        const register = await request(app).post('/api/v1/auth/register').send({
+            name: 'Jane Doe',
+            email: 'cookie-logout@test.com',
+            password: 'Password123',
+        });
+        const cookieValue = getCookieValue(register, 'refreshToken');
+
+        const res = await request(app)
+            .post('/api/v1/auth/logout')
+            .set('Cookie', `refreshToken=${cookieValue}`)
+            .set('X-ArthaGrid-Client', 'web')
+            .send({});
+
+        expect(res.status).toBe(200);
+        const setCookieHeaders = res.headers['set-cookie'] || [];
+        const cleared = setCookieHeaders.find((c) => c.startsWith('refreshToken='));
+        expect(cleared).toMatch(/refreshToken=;/); // cleared — empty value
+    });
+});

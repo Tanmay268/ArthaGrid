@@ -3,11 +3,17 @@ const mongoose = require('mongoose');
 
 const TRANSACTION_TYPES = ['income', 'expense'];
 
-const CATEGORIES = [
-    'salary', 'freelance', 'investment', 'gift', 'other_income',
+const INCOME_CATEGORIES = ['salary', 'freelance', 'investment', 'gift', 'other_income'];
+const EXPENSE_CATEGORIES = [
     'food', 'transport', 'housing', 'utilities', 'healthcare',
     'entertainment', 'education', 'shopping', 'other_expense',
 ];
+
+// Kept as one combined list (same order as before) since existing schemas/
+// validators reference CATEGORIES directly — INCOME_CATEGORIES and
+// EXPENSE_CATEGORIES are additive, for features (budgets, recurring
+// detection) that only care about one side.
+const CATEGORIES = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES];
 
 const transactionSchema = new mongoose.Schema(
     {
@@ -25,6 +31,12 @@ const transactionSchema = new mongoose.Schema(
             type: String,
             enum: { values: CATEGORIES, message: `{VALUE} is not a valid category` },
             required: [true, 'Category is required'],
+        },
+        merchant: {
+            type: String,
+            trim: true,
+            maxLength: [100, 'Merchant cannot exceed 100 characters'],
+            default: null,
         },
         date: {
             type: Date,
@@ -73,6 +85,7 @@ const transactionSchema = new mongoose.Schema(
 transactionSchema.index({ date: -1 });  // -1 means descending(i.e latest first)
 transactionSchema.index({ type: 1, category: 1 });
 transactionSchema.index({ createdBy: 1, date: -1 });
+transactionSchema.index({ merchant: 1 });  // used by recurring-expense detection
 
 //Global query middleware — auto-exclude soft-deleted records
 // This runs before every find, findOne, findOneAndUpdate etc.
@@ -83,4 +96,4 @@ transactionSchema.pre(/^find/, function () {
 //convert schema to working model to enable CRUD operations
 const Transaction = mongoose.model('Transaction', transactionSchema);
 
-module.exports = { Transaction, TRANSACTION_TYPES, CATEGORIES };
+module.exports = { Transaction, TRANSACTION_TYPES, CATEGORIES, INCOME_CATEGORIES, EXPENSE_CATEGORIES };

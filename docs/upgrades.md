@@ -149,3 +149,56 @@ None of these are implemented yet. They're listed here so the gap is visible rat
 4. ~~Finish user management endpoints.~~ ✅ Done.
 5. Decide, with the product/compliance owner, which items in "What a finance company would still want" are actually required for your launch — those should come before further polish.
 6. Linting + a real CI quality gate (item #21), then the audit-log and DB-backed-roles items only if a concrete need shows up (items #20, #22).
+
+---
+
+## ArthaGrid 2.0 — Analytics, Budgets, Insights & Frontend
+
+This tracks a separate, larger initiative: turning ArthaGrid from a transaction-tracking API into a small analytics/insights product, with a real frontend on top — while staying entirely on free-tier hosting. The full plan (architecture, free-tier services chosen, and the reasoning behind each) lives in [decisions.md](./decisions.md) (entries #17–21) and [architecture.md](./architecture.md). Nothing below is marked ✅ until it's actually built and covered by a test — same rule as the rest of this document.
+
+### Phase 1 — complete (Stages A–D)
+
+**Stage A (MongoDB only, no new infra) — done:**
+
+- ✅ **Expanded analytics engine** — financial, behavioral, and comparative metrics beyond today's summary/category/trends (burn rate, expense-to-income ratio, weekday vs. weekend spending, month-over-month category growth). `GET /api/v1/analytics/metrics`. Covered by `tests/analytics.test.js`.
+- ✅ **Budgets** — per-category monthly limits with live progress tracking (spent/remaining/percentage/over-budget). `GET/POST/PATCH/DELETE /api/v1/budgets`. Read: all roles; write: admin only, same pattern as transactions. Covered by `tests/budgets.test.js`.
+- ✅ **Recurring expense detection** — groups transactions by the new optional `merchant` field when present, or by category + similar amount otherwise, and flags groups recurring at a consistent weekly/monthly interval. `GET /api/v1/analytics/recurring`.
+- ✅ **Spending forecasting** — moving average and linear regression over historical monthly totals, computed in plain JS (`src/utils/stats.js`) rather than adding a stats/ML dependency. Deliberately not using a heavier model (Random Forest, Prophet, LSTM) — a simple, explainable model is a better fit for this project's scale and easier to trust. `GET /api/v1/analytics/forecast`.
+- ✅ **Anomaly detection** — a leave-one-out z-score flag on unusually large expenses per category, shown as an ArthaGrid-computed signal, not a certainty. Runs both as a live list (`GET /api/v1/analytics/anomalies`) and as a non-blocking hint attached to `POST /api/v1/transactions`'s response (`unusual: { flagged, score }`) — it never rejects a write, only flags it.
+- ✅ **Financial Health Score** — a transparent, weighted score (30% savings rate / 25% cash-flow stability / 20% spending consistency / 15% budget adherence / 10% emergency reserve), documented as an ArthaGrid metric with a published formula in the response itself, not an objective financial truth. `GET /api/v1/analytics/health-score`.
+- ✅ **Insights engine** — rule-based, plain-language observations generated from the services above (e.g. "Food is currently your fastest-growing expense category"), computed live when requested rather than pushed proactively (proactive/scheduled insights would need a background worker — see decision #18 on why that's out of scope for a free-tier deployment). `GET /api/v1/analytics/insights`.
+
+**Stage B (Postgres rollup pipeline) — done:**
+
+- ✅ **Postgres analytics rollups** — an optional free Postgres database (Neon), holding one rollup table (`monthly_metrics`), rebuilt from MongoDB by `POST /api/v1/internal/jobs/rollup`. MongoDB remains the only source of truth — Postgres only ever holds derived, rebuildable data, and the app runs identically without it configured at all. The original design sketched five rollup tables (daily/category/recurring/forecast, alongside monthly); only `monthly_metrics` actually has a reader, so the rest were cut rather than built as write-only tables — see [decisions.md](./decisions.md) #17.
+- ✅ **Forecast prefers the rollup** — `GET /api/v1/analytics/forecast` reads its monthly history from Postgres once populated, and transparently falls back to computing it live from MongoDB otherwise (before Postgres is configured, before the first scheduled rollup runs, or if Postgres is unreachable). The response's `source` field says which one was actually used.
+- ✅ **Scheduled trigger** — `.github/workflows/rollup.yml`, a GitHub Actions workflow that calls the rollup endpoint daily with a shared secret (`CRON_SECRET`), standing in for a background worker (decision #18). Covered by `tests/rollup.test.js` (the auth guard and the optional/skip behavior — the actual Postgres writes are a manual deployment check against a real Neon database, since no Postgres is available in this test environment).
+
+**Stage C (AI Financial Copilot) — done:**
+
+- ✅ **AI Financial Copilot** — `POST /api/v1/copilot/ask`, plain-language Q&A ("why did my expenses increase?") answered by Google Gemini's free API tier (`gemini-2.5-flash` by default, overridable via `GEMINI_MODEL`). Only a small, explicitly allow-listed bundle of pre-computed aggregate numbers (totals, savings rate, top category changes, anomaly count/top few) is ever sent — never a raw transaction, `description`, or `merchant`. Read: analyst/admin, same gate as other analytics endpoints; its own tighter rate limit (20/hour) on top of that. Optional like Postgres: without `GEMINI_API_KEY` set, the endpoint returns `503` instead of the server failing to start.
+- ✅ **Privacy guarantee is tested, not just documented** — `tests/copilot.test.js` mocks the Gemini call and inspects the exact request body sent to it, asserting a transaction's `merchant`/`description` text never appears — an automated check of the promise in [decisions.md](./decisions.md) #19, not only a code comment.
+
+**Stage D (frontend) — done — Phase 1 is now complete:**
+
+- ✅ **React frontend** (`frontend/`) — Overview, Analytics, Budgets, Forecast, Insights, an "Ask ArthaGrid" copilot page, Transactions (full CRUD, gated by role), and Settings. Built with React + TypeScript + Vite + Tailwind + hand-authored shadcn-style UI primitives (`src/components/ui/`, since the shadcn CLI needs an interactive registry fetch this environment couldn't run — same visual result, written by hand instead) + Recharts + TanStack Query + React Router + Zustand, exactly the stack decided on. TanStack Query hooks live in `frontend/src/api/`, one file per resource, mirroring the backend's own route grouping.
+- ✅ **httpOnly refresh-token cookie** — `POST /auth/login`, `/register`, and `/refresh` now also set the refresh token as a cookie (`src/utils/cookies.js`), alongside the unchanged JSON response. `POST /auth/refresh`/`/logout` accept the token from either the cookie or the body (`extractRefreshToken` middleware) — existing non-browser clients are unaffected. **Corrected while building it:** the original plan said `SameSite=Strict`; that breaks entirely once frontend and API are on different domains (Vercel + Render), so it's `SameSite=None; Secure` in production and `SameSite=Lax` in local dev instead — see [decisions.md](./decisions.md) #21 for the full reasoning, including the CSRF-mitigating header (`X-ArthaGrid-Client`) that `SameSite=None` makes necessary.
+- ✅ **CORS tightened for credentialed requests** — `cors()` (wide open) became `{ origin: CORS_ORIGIN || true, credentials: true }`, required for the cookie to cross origins at all; unset in development, it reflects the request's own origin back so `npm run dev` needs no configuration.
+- ✅ **Auth test coverage extended** — `tests/auth.test.js` gained cases for the cookie being set, a cookie-only refresh succeeding with the required header, that same request being rejected without it (the CSRF guard, proven rather than just described), and the cookie being cleared on logout.
+
+Everything from the Phase 1 plan is now built. See "Roadmap" below for what's deliberately still open, and the top of [decisions.md](./decisions.md) for the reasoning behind each piece.
+
+**One known follow-up, noted rather than fixed:** the frontend's production build is a single ~670KB JS bundle (mostly Recharts) — fine for a first deploy on Vercel's free tier, but worth splitting with route-based `React.lazy()` code-splitting if load time on slower connections ever becomes a real complaint rather than a build-time warning.
+
+### Roadmap — deliberately not being built in this round
+
+These were all part of the original `makeItBetter.md` wishlist. Each is either out of reach on a genuinely free-tier deployment, or a big enough feature to deserve its own future round rather than being squeezed into this one:
+
+- **Automatic transaction categorization (ML/NLP)** — worth doing, but needs real training data from actual usage first (a brand-new account has no categorized history to learn from); revisit once there's enough real transaction history to train against.
+- **Scheduled email reports** — needs a transactional email provider account and template work; a reasonably small addition once the analytics engine above exists, but not part of this round.
+- **Admin analytics dashboard** (system-wide usage stats, request rates, latency) — needs either a metrics pipeline or a fair amount of custom logging/aggregation; not worth building until there's more than one household's worth of usage to actually look at.
+- **Observability stack (Prometheus/Grafana/OpenTelemetry)** — self-hosting these needs an always-on server, which free web-service hosting doesn't provide. A hosted free tier (e.g. Grafana Cloud) could work, but is its own integration project — deferred until it's actually needed to diagnose something.
+- **Load testing (k6/JMeter)** — genuinely useful, but should only ever be run against a local copy, never the live free-tier deployment (it would trip Atlas's or Render's free-tier throughput limits). Worth doing once there's a performance question worth answering.
+- **Full microservices split** — see decision #20. Not planned; would need multiple free hosting instances for no benefit at this project's scale.
+- **Redis + BullMQ job queues** — see decision #18. Free hosting doesn't include a free background-worker process to run them on; the scheduled-cron approach covers the same need without one.
+- **Money stored as integer cents instead of a float** — already flagged as an open item in "What a finance company would still want" above; still open, and would be a breaking migration regardless of this initiative.

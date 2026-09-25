@@ -2,6 +2,7 @@ require('express-async-errors'); // Must be first — patches async error forwar
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
@@ -14,7 +15,18 @@ const app = express();
 
 // Security + parsing middleware
 app.use(helmet());
-app.use(cors());
+// `credentials: true` is required for the httpOnly refresh-token cookie
+// (decisions.md #21) to be sent/received across origins — the frontend and
+// API are deployed on different domains. With credentials enabled, the
+// origin can't be a wildcard: CORS_ORIGIN pins it to the real frontend URL
+// in production; left unset (local development), the request's own Origin
+// header is reflected back, which keeps `npm run dev` working without
+// configuration while still being meaningfully scoped in production.
+app.use(cors({
+    origin: process.env.CORS_ORIGIN || true,
+    credentials: true,
+}));
+app.use(cookieParser());
 app.use(express.json());
 app.use(mongoSanitize()); // strips $ / . operators from user input to block NoSQL injection
 app.use(morgan('dev'));
