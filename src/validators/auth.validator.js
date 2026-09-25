@@ -1,4 +1,5 @@
 const Joi = require('joi');
+<<<<<<< HEAD
 const { ROLES } = require('../models/User');
 const { passwordComplexity } = require('./shared');
 
@@ -27,3 +28,19 @@ const logoutSchema = Joi.object({
 });
 
 module.exports = { registerSchema, loginSchema, refreshSchema, logoutSchema };
+=======
+
+const registerSchema = Joi.object({
+  name:     Joi.string().min(2).max(100).required(),
+  email:    Joi.string().email().required(),
+  password: Joi.string().min(6).required(),
+  role:     Joi.forbidden(),
+});
+
+const loginSchema = Joi.object({
+  email:    Joi.string().email().required(),
+  password: Joi.string().required(),
+});
+
+module.exports = { registerSchema, loginSchema };
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5

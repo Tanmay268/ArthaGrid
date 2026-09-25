@@ -1,5 +1,6 @@
 const { Transaction } = require('../models/Transaction');
 
+<<<<<<< HEAD
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPER: build a base $match stage from optional date range filters
 // Every dashboard endpoint accepts ?startDate=&endDate= to scope the data
@@ -221,10 +222,155 @@ const getTrends = async ({ period = 'monthly', year, startDate, endDate } = {}) 
     {
       $group: {
         _id: { ...groupId, type: '$type' },
+=======
+/**
+ * Build a $match stage for aggregation pipelines.
+ * Aggregation bypasses Mongoose middleware, so we must manually
+ * exclude soft-deleted records in every pipeline.
+ */
+const buildDateMatch = (startDate, endDate) => {
+  const match = { isDeleted: { $ne: true } };
+  if (startDate || endDate) {
+    match.date = {};
+    if (startDate) match.date.$gte = new Date(startDate);
+    if (endDate)   match.date.$lte = new Date(endDate);
+  }
+  return match;
+};
+
+// ─── SUMMARY ──────────────────────────────────────────────────────────────────
+const getSummary = async ({ startDate, endDate } = {}) => {
+  const match = buildDateMatch(startDate, endDate);
+
+  const result = await Transaction.aggregate([
+    { $match: match },
+    {
+      $group: {
+        _id: null,
+        totalIncome: {
+          $sum: { $cond: [{ $eq: ['$type', 'income'] }, '$amount', 0] },
+        },
+        totalExpenses: {
+          $sum: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] },
+        },
+        transactionCount: { $sum: 1 },
+        avgAmount:        { $avg: '$amount' },
+        largestIncome: {
+          $max: { $cond: [{ $eq: ['$type', 'income'] }, '$amount', 0] },
+        },
+        largestExpense: {
+          $max: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] },
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        totalIncome:          { $round: ['$totalIncome', 2] },
+        totalExpenses:        { $round: ['$totalExpenses', 2] },
+        netBalance:           { $round: [{ $subtract: ['$totalIncome', '$totalExpenses'] }, 2] },
+        transactionCount:     1,
+        avgTransactionAmount: { $round: ['$avgAmount', 2] },
+        largestIncome:        { $round: ['$largestIncome', 2] },
+        largestExpense:       { $round: ['$largestExpense', 2] },
+        savingsRate: {
+          $cond: [
+            { $gt: ['$totalIncome', 0] },
+            {
+              $round: [
+                {
+                  $multiply: [
+                    { $divide: [{ $subtract: ['$totalIncome', '$totalExpenses'] }, '$totalIncome'] },
+                    100,
+                  ],
+                },
+                1,
+              ],
+            },
+            0,
+          ],
+        },
+      },
+    },
+  ]);
+
+  return result[0] ?? {
+    totalIncome: 0, totalExpenses: 0, netBalance: 0,
+    transactionCount: 0, avgTransactionAmount: 0,
+    largestIncome: 0, largestExpense: 0, savingsRate: 0,
+  };
+};
+
+// ─── CATEGORY BREAKDOWN ───────────────────────────────────────────────────────
+const getByCategory = async ({ startDate, endDate, type } = {}) => {
+  const match = buildDateMatch(startDate, endDate);
+  if (type) match.type = type;
+
+  const results = await Transaction.aggregate([
+    { $match: match },
+    {
+      $group: {
+        _id:   { category: '$category', type: '$type' },
+        total: { $sum: '$amount' },
+        count: { $sum: 1 },
+        avg:   { $avg: '$amount' },
+        min:   { $min: '$amount' },
+        max:   { $max: '$amount' },
+      },
+    },
+    {
+      $project: {
+        _id:      0,
+        category: '$_id.category',
+        type:     '$_id.type',
+        total:    { $round: ['$total', 2] },
+        count:    1,
+        avg:      { $round: ['$avg', 2] },
+        min:      { $round: ['$min', 2] },
+        max:      { $round: ['$max', 2] },
+      },
+    },
+    { $sort: { total: -1 } },
+  ]);
+
+  return results.reduce(
+    (acc, item) => { acc[item.type].push(item); return acc; },
+    { income: [], expense: [] }
+  );
+};
+
+// ─── TRENDS ───────────────────────────────────────────────────────────────────
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun',
+                     'Jul','Aug','Sep','Oct','Nov','Dec'];
+
+const formatPeriodLabel = (period, idObj) => {
+  if (period === 'weekly') return `W${idObj.week} ${idObj.year}`;
+  return `${MONTH_NAMES[idObj.month - 1]} ${idObj.year}`;
+};
+
+const getTrends = async ({ period = 'monthly', year, startDate, endDate } = {}) => {
+  const match = buildDateMatch(startDate, endDate);
+
+  if (year) {
+    const y = parseInt(year);
+    match.date = { $gte: new Date(`${y}-01-01`), $lte: new Date(`${y}-12-31`) };
+  }
+
+  const groupId = period === 'weekly'
+    ? { year: { $isoWeekYear: '$date' }, week: { $isoWeek: '$date' } }
+    : { year: { $year: '$date' }, month: { $month: '$date' } };
+
+  const results = await Transaction.aggregate([
+    { $match: match },
+    {
+      $group: {
+        _id:   { ...groupId, type: '$type' },
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
         total: { $sum: '$amount' },
         count: { $sum: 1 },
       },
     },
+<<<<<<< HEAD
 
     // Sort chronologically
     { $sort: { '_id.year': 1, '_id.month': 1, '_id.week': 1 } },
@@ -245,6 +391,17 @@ const getTrends = async ({ period = 'monthly', year, startDate, endDate } = {}) 
       period === 'weekly'
         ? `W${row._id.week}-${row._id.year}`
         : `${row._id.year}-${String(row._id.month).padStart(2, '0')}`;
+=======
+    { $sort: { '_id.year': 1, '_id.month': 1, '_id.week': 1 } },
+  ]);
+
+  const periodMap = new Map();
+
+  for (const row of results) {
+    const key = period === 'weekly'
+      ? `${row._id.year}-W${String(row._id.week).padStart(2, '0')}`
+      : `${row._id.year}-${String(row._id.month).padStart(2, '0')}`;
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
 
     if (!periodMap.has(key)) {
       periodMap.set(key, {
@@ -260,6 +417,7 @@ const getTrends = async ({ period = 'monthly', year, startDate, endDate } = {}) 
     if (row._id.type === 'expense') entry.expenses = Math.round(row.total * 100) / 100;
   }
 
+<<<<<<< HEAD
   // Compute net and convert to sorted array
   return Array.from(periodMap.values())
     .sort((a, b) => a.period.localeCompare(b.period))
@@ -283,24 +441,41 @@ const formatPeriodLabel = (period, idObj) => {
 // GET /dashboard/recent?limit=5
 // Returns: last N transactions with computed running balance
 // ─────────────────────────────────────────────────────────────────────────────
+=======
+  return Array.from(periodMap.values())
+    .sort((a, b) => a.period.localeCompare(b.period))
+    .map(e => ({ ...e, net: Math.round((e.income - e.expenses) * 100) / 100 }));
+};
+
+// ─── RECENT ACTIVITY ──────────────────────────────────────────────────────────
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
 const getRecentActivity = async ({ limit = 5 } = {}) => {
   const transactions = await Transaction.find()
     .populate('createdBy', 'name email')
     .sort({ date: -1 })
+<<<<<<< HEAD
     .limit(Math.min(parseInt(limit), 20)); // cap at 20
+=======
+    .limit(Math.min(parseInt(limit), 20));
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
 
   return transactions;
 };
 
+<<<<<<< HEAD
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /dashboard/overview  ← THE STANDOUT ENDPOINT
 // Uses $facet to run ALL summary queries in a single DB round trip
 // ─────────────────────────────────────────────────────────────────────────────
+=======
+// ─── OVERVIEW ($facet — single round trip) ────────────────────────────────────
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
 const getOverview = async ({ startDate, endDate } = {}) => {
   const match = buildDateMatch(startDate, endDate);
 
   const [result] = await Transaction.aggregate([
     { $match: match },
+<<<<<<< HEAD
 
     // $facet runs multiple independent sub-pipelines on the same
     // matched dataset simultaneously — one DB round trip total
@@ -319,6 +494,17 @@ const getOverview = async ({ startDate, endDate } = {}) => {
                 $sum: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] },
               },
               count: { $sum: 1 },
+=======
+    {
+      $facet: {
+        summary: [
+          {
+            $group: {
+              _id:           null,
+              totalIncome:   { $sum: { $cond: [{ $eq: ['$type', 'income'] }, '$amount', 0] } },
+              totalExpenses: { $sum: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] } },
+              count:         { $sum: 1 },
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
             },
           },
           {
@@ -326,6 +512,7 @@ const getOverview = async ({ startDate, endDate } = {}) => {
               _id: 0,
               totalIncome:   { $round: ['$totalIncome', 2] },
               totalExpenses: { $round: ['$totalExpenses', 2] },
+<<<<<<< HEAD
               netBalance: {
                 $round: [{ $subtract: ['$totalIncome', '$totalExpenses'] }, 2],
               },
@@ -335,6 +522,13 @@ const getOverview = async ({ startDate, endDate } = {}) => {
         ],
 
         // Facet 2: top 5 expense categories
+=======
+              netBalance:    { $round: [{ $subtract: ['$totalIncome', '$totalExpenses'] }, 2] },
+              count:         1,
+            },
+          },
+        ],
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
         topExpenseCategories: [
           { $match: { type: 'expense' } },
           { $group: { _id: '$category', total: { $sum: '$amount' } } },
@@ -342,21 +536,31 @@ const getOverview = async ({ startDate, endDate } = {}) => {
           { $limit: 5 },
           { $project: { _id: 0, category: '$_id', total: { $round: ['$total', 2] } } },
         ],
+<<<<<<< HEAD
 
         // Facet 3: income vs expense count breakdown
+=======
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
         typeBreakdown: [
           { $group: { _id: '$type', count: { $sum: 1 }, total: { $sum: '$amount' } } },
           { $project: { _id: 0, type: '$_id', count: 1, total: { $round: ['$total', 2] } } },
         ],
+<<<<<<< HEAD
 
         // Facet 4: last 30 days vs previous 30 days comparison
+=======
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
         recentVsPrevious: [
           {
             $group: {
               _id: {
+<<<<<<< HEAD
                 isRecent: {
                   $gte: ['$date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)],
                 },
+=======
+                isRecent: { $gte: ['$date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)] },
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
                 type: '$type',
               },
               total: { $sum: '$amount' },
@@ -364,7 +568,11 @@ const getOverview = async ({ startDate, endDate } = {}) => {
           },
           {
             $project: {
+<<<<<<< HEAD
               _id: 0,
+=======
+              _id:    0,
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
               period: { $cond: ['$_id.isRecent', 'last30days', 'prior'] },
               type:   '$_id.type',
               total:  { $round: ['$total', 2] },
@@ -373,11 +581,17 @@ const getOverview = async ({ startDate, endDate } = {}) => {
         ],
       },
     },
+<<<<<<< HEAD
 
     // Flatten the summary array (facet always returns arrays)
     {
       $project: {
         summary:             { $arrayElemAt: ['$summary', 0] },
+=======
+    {
+      $project: {
+        summary:              { $arrayElemAt: ['$summary', 0] },
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
         topExpenseCategories: 1,
         typeBreakdown:        1,
         recentVsPrevious:     1,
@@ -393,6 +607,7 @@ const getOverview = async ({ startDate, endDate } = {}) => {
   };
 };
 
+<<<<<<< HEAD
 module.exports = {
   buildDateMatch,
   getSummary,
@@ -401,3 +616,6 @@ module.exports = {
   getRecentActivity,
   getOverview,
 };
+=======
+module.exports = { getSummary, getByCategory, getTrends, getRecentActivity, getOverview };
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5

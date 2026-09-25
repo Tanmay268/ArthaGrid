@@ -1,5 +1,6 @@
 const { Transaction } = require('../models/Transaction');
 const ApiError = require('../utils/ApiError');
+<<<<<<< HEAD
 const anomalyService = require('./anomaly.service');
 const cache = require('../utils/cache');
 
@@ -21,6 +22,25 @@ const createTransaction = async (data, userId) => {
 
 // ─── GET ALL (with filtering, sorting, pagination) ───────────────────────────
 
+=======
+const { log, AUDIT_ACTIONS } = require('../utils/auditLogger');
+
+const createTransaction = async (data, userId, req) => {
+  const transaction = await Transaction.create({ ...data, createdBy: userId });
+
+  log({
+    action:         AUDIT_ACTIONS.TRANSACTION_CREATE,
+    performedBy:    userId,
+    targetResource: 'Transaction',
+    targetId:       transaction._id,
+    changes:        { after: data },
+    req,
+  });
+
+  return transaction;
+};
+
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
 const getTransactions = async (filters) => {
   const {
     type, category, startDate, endDate,
@@ -28,11 +48,18 @@ const getTransactions = async (filters) => {
     page, limit, sortBy, sortOrder,
   } = filters;
 
+<<<<<<< HEAD
   // Build filter object incrementally — only add keys that were provided
   const query = {};
 
   if (type)      query.type = type;
   if (category)  query.category = category;
+=======
+  const query = {};
+
+  if (type)     query.type     = type;
+  if (category) query.category = category;
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
 
   if (startDate || endDate) {
     query.date = {};
@@ -49,11 +76,16 @@ const getTransactions = async (filters) => {
   const sort = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
   const skip = (page - 1) * limit;
 
+<<<<<<< HEAD
   // Run count and data fetch in parallel — faster than sequential
   const [total, transactions] = await Promise.all([
     // countDocuments doesn't go through the pre(/^find/) soft-delete hook,
     // so the filter has to be applied explicitly or deleted rows inflate `total`.
     Transaction.countDocuments({ ...query, isDeleted: { $ne: true } }),
+=======
+  const [total, transactions] = await Promise.all([
+    Transaction.countDocuments(query),
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
     Transaction.find(query)
       .populate('createdBy', 'name email role')
       .sort(sort)
@@ -74,16 +106,23 @@ const getTransactions = async (filters) => {
   };
 };
 
+<<<<<<< HEAD
 // ─── GET ONE ─────────────────────────────────────────────────────────────────
 
 const getTransactionById = async (id) => {
   const transaction = await Transaction.findById(id)
     .populate('createdBy', 'name email role');
 
+=======
+const getTransactionById = async (id) => {
+  const transaction = await Transaction.findById(id)
+    .populate('createdBy', 'name email role');
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
   if (!transaction) throw ApiError.notFound('Transaction not found');
   return transaction;
 };
 
+<<<<<<< HEAD
 // ─── UPDATE ──────────────────────────────────────────────────────────────────
 
 const updateTransaction = async (id, data, userId) => {
@@ -114,6 +153,47 @@ const deleteTransaction = async (id, userId) => {
 
   if (!result) throw ApiError.notFound('Transaction not found');
   cache.clear();
+=======
+const updateTransaction = async (id, data, userId, req) => {
+  const before = await Transaction.findById(id).lean();
+  if (!before) throw ApiError.notFound('Transaction not found');
+
+  const transaction = await Transaction.findByIdAndUpdate(id, data, {
+    new: true,
+    runValidators: true,
+  }).populate('createdBy', 'name email role');
+
+  log({
+    action:         AUDIT_ACTIONS.TRANSACTION_UPDATE,
+    performedBy:    userId,
+    targetResource: 'Transaction',
+    targetId:       transaction._id,
+    changes:        { before, after: data },
+    req,
+  });
+
+  return transaction;
+};
+
+const deleteTransaction = async (id, userId, req) => {
+  const result = await Transaction.findByIdAndUpdate(
+    id,
+    { $set: { isDeleted: true } },
+    { new: true }
+  );
+
+  if (!result) throw ApiError.notFound('Transaction not found');
+
+  log({
+    action:         AUDIT_ACTIONS.TRANSACTION_DELETE,
+    performedBy:    userId,
+    targetResource: 'Transaction',
+    targetId:       result._id,
+    changes:        { before: { isDeleted: false }, after: { isDeleted: true } },
+    req,
+  });
+
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
   return { message: 'Transaction deleted successfully' };
 };
 
@@ -123,4 +203,8 @@ module.exports = {
   getTransactionById,
   updateTransaction,
   deleteTransaction,
+<<<<<<< HEAD
 };
+=======
+};
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5

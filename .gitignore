@@ -1,3 +1,10 @@
 node_modules/
 .env
+<<<<<<< HEAD
 *.log
+=======
+*.log
+coverage/
+.DS_Store
+dist/
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5

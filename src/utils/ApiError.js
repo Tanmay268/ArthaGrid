@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 class ApiError extends Error{
     constructor(statusCode, message, details = []){
         super(message);
@@ -26,6 +27,23 @@ class ApiError extends Error{
     static serviceUnavailable(msg = 'Service temporarily unavailable'){
         return new ApiError(503, msg);
     }
+=======
+class ApiError extends Error {
+  constructor(statusCode, message, details = []) {
+    super(message);
+    this.statusCode = statusCode;
+    this.details = details;
+    this.isOperational = true;
+    Error.captureStackTrace(this, this.constructor);
+  }
+
+  static badRequest(msg, details)           { return new ApiError(400, msg, details); }
+  static unauthorized(msg = 'Unauthorized') { return new ApiError(401, msg); }
+  static forbidden(msg = 'Access denied')   { return new ApiError(403, msg); }
+  static notFound(msg = 'Resource not found') { return new ApiError(404, msg); }
+  static conflict(msg)                      { return new ApiError(409, msg); }
+  static internal(msg = 'Internal server error') { return new ApiError(500, msg); }
+>>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
 }
 
 module.exports = ApiError;
