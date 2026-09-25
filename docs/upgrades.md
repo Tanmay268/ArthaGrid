@@ -192,7 +192,7 @@ Everything from the Phase 1 plan is now built. See "Roadmap" below for what's de
 
 ## Round 2 — the deferred roadmap items, a redesigned UI, and proof it scales
 
-Everything the first round deferred was revisited. Same rule as ever: ✅ only after it's built and tested. The backend suite is now **79 tests passing**; the frontend type-checks and builds cleanly (`tsc -b`, `vite build`).
+Everything the first round deferred was revisited. Same rule as ever: ✅ only after it's built and tested. The backend suite is now **86 tests passing** (13 suites); the frontend type-checks and builds cleanly (`tsc -b`, `vite build`).
 
 ### Built
 
@@ -210,6 +210,7 @@ Everything the first round deferred was revisited. Same rule as ever: ✅ only a
 - **Soft-deleted transactions leaked into totals.** The soft-delete filter is a Mongoose `find` hook, which does **not** run for `aggregate()`, `countDocuments()` or `distinct()`. A deleted transaction still counted in the transactions-list total, budget "spent", category growth, rollups, and the anomaly category list. Each now filters `isDeleted` explicitly, with a regression test (`tests/softDelete.test.js`).
 - **Cache stampede** (found by the load test, not by unit tests) — see decision #22 and [load-testing.md](./load-testing.md) §3c.
 - **"Weekday vs weekend" insight was misleading** — it averaged per *transaction*, so a weekend with a few big purchases looked "cheaper" than it was. It now averages per *day* (total ÷ number of weekday/weekend days in the range), with a test.
+- **Malformed or oversized request bodies were reported wrongly.** A body that isn't valid JSON returned the parser's raw text (and, in production, "Something went wrong" for what is really the client's mistake); an oversized one wasn't a clean 413. The error handler now returns `400 Invalid JSON in request body` and `413 Request body too large`, with tests in `tests/errors.test.js`.
 - **Metrics route labels lost their prefix on 404s** because Express restores `baseUrl` after a mismatch; labels are now built from the original URL with ids normalized.
 
 ### Roadmap — still deliberately not built

@@ -1,5 +1,4 @@
 const mongoose = require('mongoose');
-<<<<<<< HEAD
 const logger = require('./logger');
 
 const MAX_RETRIES = 5;
@@ -25,14 +24,4 @@ const connectDB = async (retriesLeft = MAX_RETRIES) => {
 mongoose.connection.on('disconnected', () => logger.warn('MongoDB disconnected'));
 mongoose.connection.on('error', (err) => logger.error({ err }, 'MongoDB connection error'));
 
-=======
-
-const connectDB = async () => {
-  const conn = await mongoose.connect(process.env.MONGO_URI, {
-    serverSelectionTimeoutMS: 5000,
-  });
-  console.log(`✓ MongoDB connected: ${conn.connection.host}`);
-};
-
->>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
 module.exports = connectDB;

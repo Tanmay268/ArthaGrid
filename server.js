@@ -1,5 +1,4 @@
 require('dotenv').config();
-<<<<<<< HEAD
 require('./src/config/env'); // validate required env vars, fail fast if misconfigured
 
 const app = require('./src/app');
@@ -40,26 +39,4 @@ const shutdown = (signal) => {
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-=======
-const app       = require('./src/app');
-const connectDB = require('./src/config/db');
-
-const PORT = process.env.PORT || 5000;
-const baseUrl = process.env.APP_BASE_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
-
-const start = async () => {
-  try {
-    await connectDB();
-    app.listen(PORT, () => {
-      console.log(`\nServer running on ${baseUrl}`);
-      console.log(`Swagger docs:  ${baseUrl}/api/docs`);
-      console.log(`Health check: ${baseUrl}/health\n`);
-    });
-  } catch (err) {
-    console.error('Failed to start server:', err.message);
-    process.exit(1);
-  }
-};
-
->>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
 start();

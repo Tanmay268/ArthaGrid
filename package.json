@@ -1,18 +1,11 @@
 {
-<<<<<<< HEAD
   "name": "arthagrid",
   "version": "1.5.0",
   "description": "Finance transaction tracking and analytics API",
-=======
-  "name": "ArthaGrid",
-  "version": "1.0.0",
-  "description": "Role-based finance dashboard backend API",
->>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-<<<<<<< HEAD
     "test": "jest --runInBand",
     "test:watch": "jest --watchAll",
     "seed": "node seed.js",
@@ -56,47 +49,6 @@
     "setupFiles": [
       "<rootDir>/tests/testUtils/env.js"
     ],
-=======
-    "seed": "node seed.js",
-    "test": "jest --runInBand --forceExit",
-    "test:coverage": "jest --coverage --runInBand --forceExit"
-  },
-  "keywords": [
-    "finance",
-    "api",
-    "rbac",
-    "express",
-    "mongodb"
-  ],
-  "author": "Tanmay Kaushik",
-  "license": "MIT",
-  "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "express-async-errors": "^3.1.1",
-    "express-mongo-sanitize": "^2.2.0",
-    "express-rate-limit": "^7.1.5",
-    "helmet": "^7.1.0",
-    "hpp": "^0.2.3",
-    "joi": "^17.11.0",
-    "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.0.3",
-    "morgan": "^1.10.0",
-    "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.0"
-  },
-  "devDependencies": {
-    "jest": "^29.7.0",
-    "jest-mock-extended": "^4.0.0",
-    "mongodb-memory-server": "^11.0.1",
-    "nodemon": "^3.0.2",
-    "supertest": "^6.3.3"
-  },
-  "jest": {
-    "testEnvironment": "node",
->>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
     "testTimeout": 30000
   }
 }

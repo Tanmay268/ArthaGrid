@@ -41,7 +41,7 @@ For *why* these particular services were chosen (and what their free-tier limits
 1. Create a free account at [render.com](https://render.com).
 2. Create a new **Web Service**, pointing at this GitHub repo.
 3. Build command: `npm ci`. Start command: `npm start`.
-4. Add every variable from `.env.example` as an environment variable on the service (`MONGO_URI`, `JWT_SECRET`, `POSTGRES_URL`, `GEMINI_API_KEY`, `CRON_SECRET` — make this one up, it's just a shared password between GitHub Actions and your API — and `CORS_ORIGIN`, set to your Vercel URL once you have it from step 5).
+4. Add every variable from `.env.example` as an environment variable on the service (the repo's `render.yaml` Blueprint lists them all and marks the secrets, and `.env.render.example` is a production-flavored template — you can use either the Blueprint or the manual steps) (`MONGO_URI`, `JWT_SECRET`, `POSTGRES_URL`, `GEMINI_API_KEY`, `CRON_SECRET` — make this one up, it's just a shared password between GitHub Actions and your API — and `CORS_ORIGIN`, set to your Vercel URL once you have it from step 5).
 5. Deploy. Note the URL Render gives you (something like `https://arthagrid.onrender.com`) — the frontend and the scheduled job both need it.
 6. **Know the trade-off:** a free Render web service falls asleep after 15 minutes with no traffic, and takes about a minute to wake back up on the next request. That's normal, not a bug — nothing to do about it for free.
 

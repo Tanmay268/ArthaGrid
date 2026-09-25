@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 const router = require('express').Router();
 const { register, login, refresh, logout } = require('../../controllers/auth.controller');
 const validate = require('../../middleware/validate');
@@ -23,17 +22,5 @@ router.post('/register', authLimiter, validate(registerSchema), register);
 router.post('/login', authLimiter, validate(loginSchema), login);
 router.post('/refresh', authLimiter, validate(refreshSchema), extractRefreshToken, refresh);
 router.post('/logout', validate(logoutSchema), extractRefreshToken, logout);
-=======
-const router      = require('express').Router();
-const controller  = require('../../controllers/auth.controller');
-const validate    = require('../../middleware/validate');
-const authenticate = require('../../middleware/authenticate');
-const { authLimiter } = require('../../middleware/rateLimiter');
-const { registerSchema, loginSchema } = require('../../validators/auth.validator');
-
-router.post('/register', authLimiter, validate(registerSchema), controller.register);
-router.post('/login',    authLimiter, validate(loginSchema),    controller.login);
-router.get( '/me',       authenticate,                          controller.getMe);
->>>>>>> f9910c6c266a8504cd2fb0f86a3803c761396bf5
 
 module.exports = router;

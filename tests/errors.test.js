@@ -1,10 +1,10 @@
 const request = require('supertest');
 const app     = require('../src/app');
-const { connect, disconnect, clearCollections } = require('./helpers');
+const db = require('./testUtils/db');
 
-beforeAll(async () => { await connect(); });
-afterAll(async () => { await disconnect(); });
-beforeEach(async () => { await clearCollections(); });
+beforeAll(async () => db.connect());
+afterEach(async () => db.clearDatabase());
+afterAll(async () => db.closeDatabase());
 
 describe('Error handling', () => {
   it('returns 404 for unknown route', async () => {
@@ -22,6 +22,15 @@ describe('Error handling', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error.message).toBe('Invalid JSON in request body');
+  });
+
+  it('returns 413 for a body over the size limit', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'a@test.com', password: 'x'.repeat(150 * 1024) });
+
+    expect(res.status).toBe(413);
+    expect(res.body.error.message).toBe('Request body too large');
   });
 
   it('returns 401 with no Authorization header', async () => {

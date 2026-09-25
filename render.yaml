@@ -1,8 +1,12 @@
+# Render Blueprint for the ArthaGrid API (free plan). Secrets are marked
+# `sync: false`, so Render asks for them in its dashboard instead of reading
+# them from this file. Full walkthrough: docs/deployment.md
 services:
   - type: web
     name: arthagrid-api
     runtime: node
-    buildCommand: npm install
+    plan: free
+    buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
@@ -13,7 +17,24 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
-      - key: JWT_EXPIRES_IN
-        value: 7d
-      - key: ALLOWED_ORIGINS
+      - key: ACCESS_TOKEN_EXPIRES_IN
+        value: 15m
+      - key: REFRESH_TOKEN_EXPIRES_IN_DAYS
+        value: '7'
+      # The frontend's URL (e.g. your Vercel URL), exactly — needed for the refresh-token cookie.
+      - key: CORS_ORIGIN
+        sync: false
+      # Shared password between GitHub Actions and this API (rollup + weekly-report jobs).
+      - key: CRON_SECRET
+        sync: false
+      # Optional — each feature switches on only when its variable is set.
+      - key: POSTGRES_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: REPORT_ALLOWED_RECIPIENTS
+        sync: false
+      - key: METRICS_TOKEN
         sync: false
