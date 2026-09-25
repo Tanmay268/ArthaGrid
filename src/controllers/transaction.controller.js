@@ -1,4 +1,5 @@
 const transactionService = require('../services/transaction.service');
+const categorizeService = require('../services/categorize.service');
 
 const create = async (req, res) => {
   const { transaction, unusual } = await transactionService.createTransaction(req.body, req.user._id);
@@ -25,4 +26,9 @@ const remove = async (req, res) => {
   res.status(200).json({ success: true, ...result });
 };
 
-module.exports = { create, getAll, getOne, update, remove };
+const suggestCategory = async (req, res) => {
+  const data = await categorizeService.suggestCategory(req.body);
+  res.status(200).json({ success: true, data });
+};
+
+module.exports = { create, getAll, getOne, update, remove, suggestCategory };

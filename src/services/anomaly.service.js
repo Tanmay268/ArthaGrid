@@ -45,7 +45,7 @@ const scoreTransaction = async (category, amount, excludeId = null) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getAnomalies = async () => {
-    const categories = await Transaction.distinct('category', { type: 'expense' });
+    const categories = await Transaction.distinct('category', { type: 'expense', isDeleted: { $ne: true } });
     const flagged = [];
 
     for (const category of categories) {

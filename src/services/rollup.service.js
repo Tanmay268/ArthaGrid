@@ -12,6 +12,7 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 
 const computeMonthlyMetrics = async () => {
     const rows = await Transaction.aggregate([
+        { $match: { isDeleted: { $ne: true } } }, // aggregate() bypasses the soft-delete hook
         {
             $group: {
                 _id: { year: { $year: '$date' }, month: { $month: '$date' } },

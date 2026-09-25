@@ -9,6 +9,7 @@ export interface User {
   email: string;
   role: Role;
   isActive?: boolean;
+  preferences?: { weeklyReport: boolean };
 }
 
 export interface AuthResponseData {
@@ -177,4 +178,54 @@ export interface CopilotResponse {
 export interface ApiEnvelope<T> {
   success: boolean;
   data: T;
+}
+
+export interface CategorySuggestion {
+  suggestion: { category: string; score: number } | null;
+  alternatives: { category: string; score: number }[];
+  reason?: 'no_known_words' | 'low_confidence' | 'no_candidates';
+  basedOn: { seedExamples: number; ledgerExamples: number };
+}
+
+export interface WeeklyReport {
+  period: { start: string; end: string };
+  income: number;
+  expenses: number;
+  savings: number;
+  vsLastWeek: { incomeChangePercent: number | null; expensesChangePercent: number | null };
+  topCategory: { category: string; total: number } | null;
+  categoryChanges: { category: string; total: number; previous: number; changePercent: number | null }[];
+  unusualTransactions: { count: number; top: { category: string; amount: number }[] };
+  budgets: { total: number; withinLimit: number; overBudget: string[] };
+}
+
+export interface AdminStats {
+  users: {
+    total: number;
+    active: number;
+    newThisMonth: number;
+    activeLast30Days: number;
+    byRole: Record<string, number>;
+  };
+  transactions: {
+    total: number;
+    dailyAverage: number;
+    popularExpenseCategories: { category: string; count: number; sharePercent: number }[];
+  };
+  system: {
+    http: {
+      totalRequests: number;
+      avgLatencyMs: number;
+      p50Ms: number;
+      p95Ms: number;
+      p99Ms: number;
+      serverErrorRatePercent: number;
+      clientErrorRatePercent: number;
+    };
+    since: string;
+    uptimeSeconds: number;
+    memoryMb: { rss: number; heapUsed: number };
+    nodeVersion: string;
+    services: { mongodb: string; postgres: string; copilot: string; email: string };
+  };
 }

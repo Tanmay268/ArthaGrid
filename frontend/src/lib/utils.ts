@@ -19,3 +19,14 @@ export function formatPercent(value: number): string {
   const sign = value > 0 ? '+' : '';
   return `${sign}${value.toFixed(1)}%`;
 }
+
+// "other_expense" -> "other expense"
+export const humanize = (value: string) => value.replace(/_/g, ' ');
+
+export function errorMessage(err: unknown, fallback = 'Something went wrong. Please try again.'): string {
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
+export function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}

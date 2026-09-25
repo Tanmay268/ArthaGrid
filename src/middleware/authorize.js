@@ -24,6 +24,7 @@ const PERMISSIONS = {
         'read:analytics',
         'read:budgets',
         'write:budgets',
+        'read:admin',
         'read:users',
         'write:users',
         'delete:users',

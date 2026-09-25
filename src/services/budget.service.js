@@ -1,6 +1,7 @@
 const { Budget } = require('../models/Budget');
 const { Transaction } = require('../models/Transaction');
 const ApiError = require('../utils/ApiError');
+const cache = require('../utils/cache');
 
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -19,7 +20,9 @@ const createBudget = async (data, userId) => {
     const existing = await Budget.findOne({ category: data.category });
     if (existing) throw ApiError.conflict(`A budget for "${data.category}" already exists`);
 
-    return Budget.create({ ...data, createdBy: userId });
+    const budget = await Budget.create({ ...data, createdBy: userId });
+    cache.clear();
+    return budget;
 };
 
 // ─── LIST, with current-month progress attached ────────────────────────────
@@ -30,7 +33,7 @@ const getBudgets = async () => {
 
     const { start, end } = getCurrentMonthRange();
     const spendRows = await Transaction.aggregate([
-        { $match: { type: 'expense', date: { $gte: start, $lte: end } } },
+        { $match: { isDeleted: { $ne: true }, type: 'expense', date: { $gte: start, $lte: end } } },
         { $group: { _id: '$category', spent: { $sum: '$amount' } } },
     ]);
     const spendByCategory = new Map(spendRows.map((r) => [r._id, r.spent]));
@@ -64,6 +67,7 @@ const updateBudget = async (id, data, userId) => {
     );
 
     if (!budget) throw ApiError.notFound('Budget not found');
+    cache.clear();
     return budget;
 };
 
@@ -72,6 +76,7 @@ const updateBudget = async (id, data, userId) => {
 const deleteBudget = async (id) => {
     const budget = await Budget.findByIdAndDelete(id);
     if (!budget) throw ApiError.notFound('Budget not found');
+    cache.clear();
     return { message: 'Budget removed' };
 };
 

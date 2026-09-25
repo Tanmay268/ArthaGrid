@@ -36,4 +36,11 @@ const queryTransactionSchema = Joi.object({
   sortOrder:  Joi.string().valid('asc', 'desc').default('desc'),
 });
 
-module.exports = { createTransactionSchema, updateTransactionSchema, queryTransactionSchema };
+// At least one of description/merchant must be a non-empty string.
+const suggestCategorySchema = Joi.object({
+  description: Joi.string().trim().min(1).max(200),
+  merchant: Joi.string().trim().min(1).max(100),
+  type: Joi.string().valid(...TRANSACTION_TYPES),
+}).or('description', 'merchant');
+
+module.exports = { createTransactionSchema, updateTransactionSchema, queryTransactionSchema, suggestCategorySchema };

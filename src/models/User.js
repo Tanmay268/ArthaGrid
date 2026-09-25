@@ -40,6 +40,18 @@ const userSchema = new mongoose.Schema(
             type: Boolean,
             default: true,
         },
+        // Powers the admin dashboard's "active users" number.
+        lastLoginAt: {
+            type: Date,
+            default: null,
+        },
+        preferences: {
+            // Opt-in only — nobody gets an email they didn't ask for.
+            weeklyReport: {
+                type: Boolean,
+                default: false,
+            },
+        },
     },
     {
         timestamps: true,

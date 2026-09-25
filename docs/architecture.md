@@ -21,6 +21,11 @@ This document explains how ArthaGrid is built, in two levels of detail. Read the
 | Analytics store *(optional)* | PostgreSQL (via Neon, `pg` driver, no ORM) | A second, free database holding only one pre-computed rollup table; every endpoint works without it — see [decisions.md](./decisions.md) #17 |
 | Scheduled jobs | GitHub Actions scheduled workflow | Stands in for a background worker, which no free hosting tier provides — see [decisions.md](./decisions.md) #18 |
 | AI copilot *(optional)* | Google Gemini API (free tier, no SDK — plain `fetch`) | Plain-language Q&A over pre-computed aggregate numbers only — see [decisions.md](./decisions.md) #19 |
+| Response cache | In-process TTL cache + request coalescing (`src/utils/cache.js`) | Makes the heavy analytics endpoints ~3.7× faster under load with no extra service — see [decisions.md](./decisions.md) #22 and [load-testing.md](./load-testing.md) |
+| Auto-categorization | Naive Bayes classifier in plain JS (`src/services/categorize.service.js`) | Suggests a category from a description; no ML dependency, nothing leaves the server — see [decisions.md](./decisions.md) #23 |
+| Email reports *(optional)* | Resend HTTPS API (plain `fetch`) | Free hosting blocks SMTP ports, so mail goes over HTTPS — see [decisions.md](./decisions.md) #24 |
+| Metrics | `prom-client` → `/metrics` (Prometheus format) | Works with Grafana Cloud's free tier; no self-hosted server — see [decisions.md](./decisions.md) #25 and [observability.md](./observability.md) |
+| Load testing | k6 (free, local) | Measured proof of how the API behaves under load — see [load-testing.md](./load-testing.md) |
 | Frontend | React + TypeScript + Vite + Tailwind + hand-authored shadcn-style UI primitives + Recharts + TanStack Query + React Router + Zustand | The first visual dashboard for ArthaGrid (`frontend/`), deployed separately on Vercel |
 
 ---
@@ -246,6 +251,32 @@ flowchart TD
 - **Built, optional:** a separate, scheduled path exists for the one number that's worth pre-computing — monthly income/expense/net totals, which the forecast endpoint reads repeatedly. Once a day, a GitHub Actions workflow calls a protected internal endpoint that reads from MongoDB and rebuilds `monthly_metrics` in Postgres. Nothing in this path runs continuously — it's an on/off script triggered by a timer, not a background worker. Without `POSTGRES_URL` set, this path simply never activates and the forecast endpoint keeps computing its history live from MongoDB, exactly as it did before this existed.
 - **Built, optional:** the AI copilot never touches MongoDB or Postgres directly from Gemini's side. The server first computes a small, explicitly allow-listed bundle of aggregate numbers using the same analytics services as everything else, and only that bundle (plus the user's question) is sent to Gemini — verified by a test that mocks the call and inspects the exact request body. Without `GEMINI_API_KEY` set, `POST /copilot/ask` returns `503` instead of the server failing to start.
 
+### Caching, reports and metrics (Round 2)
+
+```mermaid
+flowchart TD
+    Client["Browser"] --> Auth["authenticate + authorize"]
+    Auth --> Cache{"cacheResponse\n(30 s TTL)"}
+    Cache -->|"hit"| Client
+    Cache -->|"miss: first request computes,\nconcurrent ones wait and share"| Svc["analytics / dashboard services"]
+    Svc --> Mongo[(MongoDB)]
+    Write["POST/PATCH/DELETE\ntransactions & budgets"] -->|"clears"| Cache
+
+    GHA2["GitHub Actions\nweekly workflow"] -->|"POST /internal/jobs/weekly-report\n+ shared secret"| Mailer["reportMailer.service.js"]
+    Mailer --> Mongo
+    Mailer -->|"HTTPS"| Resend["Resend email API\n(optional)"]
+
+    Prom["Prometheus / Grafana Cloud"] -->|"GET /metrics\n+ bearer token"| Metrics["prom-client registry"]
+    AdminUI["Admin page"] -->|"GET /admin/stats (admin JWT)"| AdminSvc["admin.service.js"]
+    AdminSvc --> Metrics
+    AdminSvc --> Mongo
+```
+
+**In plain words:**
+- The cache sits *after* the login and role checks, so someone who isn't allowed to see a response can never be handed a cached copy. Any write to transactions or budgets empties it, so people see their own changes immediately.
+- The weekly email uses the same "external timer calls a secret endpoint" pattern as the rollup job. Without `RESEND_API_KEY` it does nothing and reports "skipped".
+- `/metrics` is for machines (Prometheus), guarded by `METRICS_TOKEN`; `/admin/stats` is for the admin page, guarded by the admin login. They share the same in-memory counters, which reset whenever the free host restarts.
+
 ---
 
 ## Folder structure
@@ -257,18 +288,23 @@ ArthaGrid/
 ├── Dockerfile / docker-compose.yml   # containerized run (app + local MongoDB)
 ├── .github/workflows/
 │   ├── ci.yml                   # runs the test suite on every push/PR
-│   └── rollup.yml                # scheduled workflow — calls the internal rollup endpoint daily
+│   ├── rollup.yml                # scheduled workflow — calls the internal rollup endpoint daily
+│   └── weekly-report.yml         # scheduled workflow — sends the opt-in weekly email report
 ├── docs/                     # this documentation, plus the OpenAPI spec served at /api-docs
 ├── frontend/                 # React dashboard — separate app, own package.json, deployed to Vercel
 │   └── src/
 │       ├── api/                  # TanStack Query hooks, one file per backend resource
 │       ├── components/ui/         # hand-authored shadcn-style primitives (button, card, table, …)
-│       ├── components/layout/     # Sidebar, Topbar, AppLayout, ProtectedRoute
+│       ├── components/layout/     # Sidebar (desktop) / drawer (mobile), Topbar, AppLayout, ProtectedRoute
+│       ├── components/ThemeToggle.tsx  # light / dark / system switch
 │       ├── pages/                # one folder per route (overview, analytics, budgets, forecast,
-│       │                          #   insights, copilot, transactions, settings, auth)
-│       ├── store/authStore.ts     # Zustand — user + in-memory access token only, nothing persisted
+│       │                          #   insights, copilot, transactions, settings, admin, auth) — lazy-loaded
+│       ├── store/                 # Zustand: authStore (user + in-memory access token only), themeStore
+│       │                          #   (remembered in localStorage), toastStore, uiStore
 │       └── lib/api.ts             # fetch wrapper: attaches the access token, retries once via
 │                                   #   silent refresh on a 401, matches decisions.md #21
+├── loadtest/                 # k6 script, self-contained in-memory test server, results summarizer, saved results
+├── scripts/evaluate-categorizer.js   # reproduces the categorizer's accuracy numbers
 ├── tests/                    # Jest + Supertest, against an in-memory MongoDB
 ├── src/
 │   ├── app.js                 # Express app setup, global middleware, routes
@@ -276,20 +312,26 @@ ArthaGrid/
 │   │   ├── env.js               # validates process.env at boot, fails fast if misconfigured
 │   │   ├── logger.js             # Pino structured logger
 │   │   ├── db.js                 # MongoDB connection, with retry + graceful event logging
-│   │   └── postgres.js            # optional Postgres connection pool for the analytics rollup store
+│   │   ├── postgres.js            # optional Postgres connection pool for the analytics rollup store
+│   │   ├── metrics.js             # prom-client registry, request-latency histogram, label normalization
+│   │   └── rateLimit.js           # rate limiters; bypass switch honored only outside production
 │   ├── db/schema.sql           # Postgres rollup table definition (monthly_metrics)
-│   ├── routes/v1/              # auth, transactions, dashboard, users, budgets, analytics, copilot, internal
+│   ├── data/categorySeed.js     # the categorizer's built-in training phrases
+│   ├── routes/v1/              # auth, transactions, dashboard, users, budgets, analytics, copilot, admin, internal
 │   ├── controllers/            # thin HTTP handlers
 │   ├── services/                # business logic, incl. analytics/forecast/anomaly/recurring/
-│   │                            #   healthScore/insights/budget/rollup/copilot services
+│   │                            #   healthScore/insights/budget/rollup/copilot/
+│   │                            #   categorize/report/reportMailer/email/admin services
 │   ├── models/                  # Mongoose schemas (User, Transaction, RefreshToken, Budget)
 │   ├── middleware/              # authenticate, authorize, validate, errorHandler,
-│   │                            #   verifyCronSecret, extractRefreshToken
+│   │                            #   verifyCronSecret, verifyMetricsToken, cacheResponse, extractRefreshToken
 │   ├── validators/               # Joi schemas (+ shared.js for cross-cutting rules like password strength)
 │   └── utils/
 │       ├── ApiError.js            # custom error class
 │       ├── stats.js               # mean/stddev/linear-regression helpers used by forecasting & anomaly detection
-│       └── cookies.js             # sets/clears the httpOnly refresh-token cookie
+│       ├── cookies.js             # sets/clears the httpOnly refresh-token cookie
+│       ├── cache.js               # in-process TTL cache used by cacheResponse
+│       └── safeEqual.js           # constant-time secret comparison (cron secret, metrics token)
 ```
 
 ## API surface (v1)
@@ -328,15 +370,21 @@ This table is the actual, live API — it matches [openapi.yaml](./openapi.yaml)
 | GET | `/api/v1/analytics/recurring` | analyst, admin | Detected recurring expenses (subscriptions, rent, etc.) |
 | GET | `/api/v1/analytics/health-score` | analyst, admin | Financial Health Score, with its component breakdown |
 | GET | `/api/v1/analytics/insights` | analyst, admin | Rule-based plain-language insights |
+| GET | `/api/v1/analytics/weekly-report` | analyst, admin | The weekly summary that the email report is built from |
+| POST | `/api/v1/transactions/suggest-category` | admin (same gate as creating a transaction) | Suggest a category from a description/merchant; returns no suggestion when unsure |
+| GET | `/api/v1/admin/stats` | admin | Platform stats: users, transaction volume, popular categories, request/latency numbers, service status |
 | POST | `/api/v1/copilot/ask` | analyst, admin | Ask a plain-language question, answered from aggregate data via Gemini — 20 requests/hour |
+| GET | `/` | anyone | Tiny JSON pointer to the docs and health check |
 | GET | `/health` | anyone | Basic uptime check |
-| GET | `/api-docs` | anyone | Interactive OpenAPI documentation |
+| GET | `/metrics` | bearer `METRICS_TOKEN` (401 if unset) | Prometheus-format metrics for Grafana Cloud / Prometheus |
+| GET | `/api-docs` | anyone | Interactive OpenAPI documentation (also reachable at `/api-docs` on the frontend's domain, which forwards here) |
 
 ### Internal, built but deliberately not public
 
 | Method | Path | Who can call it | Purpose |
 |---|---|---|---|
 | POST | `/api/v1/internal/jobs/rollup` | internal only — a static `X-Cron-Secret` header, not a user session | Rebuilds `monthly_metrics` in Postgres from MongoDB. Called by the scheduled GitHub Actions workflow (`.github/workflows/rollup.yml`). Live and tested, but never listed in `openapi.yaml`/`/api-docs` — it's not something an API consumer should ever call. |
+| POST | `/api/v1/internal/jobs/weekly-report` | internal only — same `X-Cron-Secret` header | Emails the weekly report to opted-in users (skipped when `RESEND_API_KEY` is unset). Called by `.github/workflows/weekly-report.yml`. Also kept out of the public docs. |
 
 Every endpoint from the original ArthaGrid 2.0 plan is now built — see [upgrades.md](./upgrades.md) for the full Stage A–D history, and the "Roadmap" section there for what's deliberately still open beyond this round.
 
@@ -353,7 +401,9 @@ flowchart LR
     Render --> Atlas[("MongoDB Atlas\nfree M0 cluster")]
     Render --> Neon[("Postgres\nNeon free tier")]
     Render --> GeminiAPI["Google Gemini API\n(free tier)"]
-    GHA["GitHub Actions\nscheduled workflow"] -->|"daily, with shared secret"| Render
+    Render --> Resend["Resend email API\n(free tier, optional)"]
+    GHA["GitHub Actions\nscheduled workflows"] -->|"daily rollup + weekly report,\nwith shared secret"| Render
+    Grafana["Grafana Cloud\n(free, optional)"] -->|"scrapes /metrics"| Render
 ```
 
 Each piece is free on its own, but each also comes with a free-tier limitation worth knowing about rather than being surprised by:
@@ -365,4 +415,6 @@ Each piece is free on its own, but each also comes with a free-tier limitation w
 | Neon Postgres | 0.5GB storage, 100 compute-hours/month, scales to zero | Only ever holds small, pre-aggregated rollup tables, so the storage limit isn't a real constraint. |
 | GitHub Actions | 2,000 free minutes/month on a private repo (unlimited on a public repo) | The rollup job runs once a day and takes seconds — nowhere near the limit. |
 | Google Gemini API | Free tier is Flash-model-only, rate-limited, and inputs may be used to improve Google's products | Mitigated by only ever sending pre-computed aggregate numbers to it, never raw transactions (see [decisions.md](./decisions.md) #19). |
+| Resend (email) | Free tier has a monthly send cap; until you verify a domain it can only send from its sandbox address to the account owner | Fine for a demo. Set `REPORT_FROM_EMAIL` once you have a verified domain. |
+| Grafana Cloud (metrics) | Free tier has retention and series limits | Route labels are normalized so ArthaGrid can't blow the series budget — see [observability.md](./observability.md). |
 | Vercel (frontend hosting) | Hobby plan is personal/non-commercial use only | Fine for a portfolio project; would need a paid plan if this were ever monetized. |

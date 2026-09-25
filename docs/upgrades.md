@@ -188,17 +188,37 @@ This tracks a separate, larger initiative: turning ArthaGrid from a transaction-
 
 Everything from the Phase 1 plan is now built. See "Roadmap" below for what's deliberately still open, and the top of [decisions.md](./decisions.md) for the reasoning behind each piece.
 
-**One known follow-up, noted rather than fixed:** the frontend's production build is a single ~670KB JS bundle (mostly Recharts) — fine for a first deploy on Vercel's free tier, but worth splitting with route-based `React.lazy()` code-splitting if load time on slower connections ever becomes a real complaint rather than a build-time warning.
+**Follow-up since completed:** the single ~670KB bundle was split with route-based `React.lazy()` (see Round 2 below).
 
-### Roadmap — deliberately not being built in this round
+## Round 2 — the deferred roadmap items, a redesigned UI, and proof it scales
 
-These were all part of the original `makeItBetter.md` wishlist. Each is either out of reach on a genuinely free-tier deployment, or a big enough feature to deserve its own future round rather than being squeezed into this one:
+Everything the first round deferred was revisited. Same rule as ever: ✅ only after it's built and tested. The backend suite is now **79 tests passing**; the frontend type-checks and builds cleanly (`tsc -b`, `vite build`).
 
-- **Automatic transaction categorization (ML/NLP)** — worth doing, but needs real training data from actual usage first (a brand-new account has no categorized history to learn from); revisit once there's enough real transaction history to train against.
-- **Scheduled email reports** — needs a transactional email provider account and template work; a reasonably small addition once the analytics engine above exists, but not part of this round.
-- **Admin analytics dashboard** (system-wide usage stats, request rates, latency) — needs either a metrics pipeline or a fair amount of custom logging/aggregation; not worth building until there's more than one household's worth of usage to actually look at.
-- **Observability stack (Prometheus/Grafana/OpenTelemetry)** — self-hosting these needs an always-on server, which free web-service hosting doesn't provide. A hosted free tier (e.g. Grafana Cloud) could work, but is its own integration project — deferred until it's actually needed to diagnose something.
-- **Load testing (k6/JMeter)** — genuinely useful, but should only ever be run against a local copy, never the live free-tier deployment (it would trip Atlas's or Render's free-tier throughput limits). Worth doing once there's a performance question worth answering.
+### Built
+
+- ✅ **Auto-categorization** — `POST /api/v1/transactions/suggest-category`. A small Naive Bayes classifier in plain JS, no ML dependency and no third-party call (decision #23). It abstains rather than guessing when unsure. **Accuracy, honestly:** 94.6% (35/37) on a small held-out set, but only 49.2% in 5-fold cross-validation on the seed phrases; the "score" is a relative ranking, not a probability. Reproduce with `npm run eval:categorizer`. Covered by `tests/categorize.test.js`.
+- ✅ **Scheduled weekly email reports** — users opt in from Settings; `.github/workflows/weekly-report.yml` triggers `POST /api/v1/internal/jobs/weekly-report`; email goes out over Resend's HTTPS API because Render's free tier blocks SMTP ports (decision #24). Optional (skipped without `RESEND_API_KEY`), with a `REPORT_ALLOWED_RECIPIENTS` allow-list because registration doesn't verify email ownership. Also `GET /api/v1/analytics/weekly-report` for the same data in the app. Covered by `tests/reports.test.js`. **Not built:** PDF reports.
+- ✅ **Admin analytics dashboard** — `GET /api/v1/admin/stats` (admin only, `read:admin` permission) and an `/admin` page: user counts (total, active in the last 30 days, new this month, by role), transaction count and daily average, popular expense categories, and system health (request count, average/p95/p99 latency, server-error rate, memory, and whether MongoDB/Postgres/copilot/email are connected). Aggregate-only — never an individual transaction's amount, description or merchant. Request/latency numbers reset when the free host restarts. Covered by `tests/observability.test.js`.
+- ✅ **Observability** — Prometheus-format `GET /metrics` behind a bearer token, with bounded label cardinality (decision #25). Setup for Grafana Cloud's free tier is in [observability.md](./observability.md). **Not built:** OpenTelemetry tracing (needs a collector to host).
+- ✅ **Load testing** — k6 script + a self-contained in-memory test server + a results summarizer; real measured results and caveats in [load-testing.md](./load-testing.md). Free, local, no accounts.
+- ✅ **Response cache with request coalescing** (decision #22) — added *because* of the load test: ~3.7× throughput and ~8.6× lower p95 at 100 simulated users on the same laptop.
+- ✅ **`/api-docs` reachable from the frontend** — the Swagger UI is still served by the API at `/api-docs`; the frontend now has a `/api-docs` route that forwards to it, so the address works on either domain.
+- ✅ **Redesigned frontend** — dark/light/system theme toggle (remembered, and no flash of the wrong theme on load), mobile-friendly layout (slide-out navigation drawer, tables that collapse to cards, safe-area padding), toast notifications instead of inline error text, skeleton loading states, confirm dialogs for destructive actions, empty/error states, a viewer-specific Overview (viewers can't call analyst endpoints), and lazy-loaded routes (first-load JS ~210KB → ~81KB gzipped).
+
+### Bugs found and fixed while doing this (kept here because finding them is the point of testing)
+
+- **Soft-deleted transactions leaked into totals.** The soft-delete filter is a Mongoose `find` hook, which does **not** run for `aggregate()`, `countDocuments()` or `distinct()`. A deleted transaction still counted in the transactions-list total, budget "spent", category growth, rollups, and the anomaly category list. Each now filters `isDeleted` explicitly, with a regression test (`tests/softDelete.test.js`).
+- **Cache stampede** (found by the load test, not by unit tests) — see decision #22 and [load-testing.md](./load-testing.md) §3c.
+- **"Weekday vs weekend" insight was misleading** — it averaged per *transaction*, so a weekend with a few big purchases looked "cheaper" than it was. It now averages per *day* (total ÷ number of weekday/weekend days in the range), with a test.
+- **Metrics route labels lost their prefix on 404s** because Express restores `baseUrl` after a mismatch; labels are now built from the original URL with ids normalized.
+
+### Roadmap — still deliberately not built
+
+- **OpenTelemetry tracing** — needs an always-on collector; free hosting has none. (Metrics are built — see above.)
+- **PDF report export** — email reports are HTML only.
+- **Verified email addresses at registration** — would remove the need for the report recipient allow-list.
+- **Redis** — not needed while there is one instance (decision #22); the swap point is `src/utils/cache.js`.
 - **Full microservices split** — see decision #20. Not planned; would need multiple free hosting instances for no benefit at this project's scale.
-- **Redis + BullMQ job queues** — see decision #18. Free hosting doesn't include a free background-worker process to run them on; the scheduled-cron approach covers the same need without one.
-- **Money stored as integer cents instead of a float** — already flagged as an open item in "What a finance company would still want" above; still open, and would be a breaking migration regardless of this initiative.
+- **Redis + BullMQ job queues** — see decision #18. The scheduled-cron approach covers the same need without a worker.
+- **Fixing the query-per-category loop in `getAnomalies`** — a known inefficiency, not yet measured as a bottleneck; noted in [load-testing.md](./load-testing.md) §5.
+- **Money stored as integer cents instead of a float** — already flagged in "What a finance company would still want" above; still open, and would be a breaking migration.

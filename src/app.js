@@ -10,8 +10,18 @@ const mongoSanitize = require('express-mongo-sanitize');
 const swaggerUi = require('swagger-ui-express');
 const YAML = require('yamljs');
 const errorHandler = require('./middleware/errorHandler');
+const verifyMetricsToken = require('./middleware/verifyMetricsToken');
+const { register, metricsMiddleware } = require('./config/metrics');
+const { shouldSkipRateLimit } = require('./config/rateLimit');
 
 const app = express();
+
+// Behind a platform proxy (Render, Vercel, etc.) the socket address is the
+// proxy's, not the client's. Without this, express-rate-limit keys every
+// request to the same IP — one noisy user would rate-limit everyone — and
+// secure cookies can misbehave. `1` trusts exactly one hop, not arbitrary
+// X-Forwarded-For values a client could forge.
+if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
 
 // Security + parsing middleware
 app.use(helmet());
@@ -30,6 +40,7 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(mongoSanitize()); // strips $ / . operators from user input to block NoSQL injection
 app.use(morgan('dev'));
+app.use(metricsMiddleware);
 
 // Baseline rate limit for every API route — auth routes layer a stricter
 // limiter of their own on top of this (see routes/v1/auth.routes.js)
@@ -38,13 +49,31 @@ const globalLimiter = rateLimit({
     max: 300,
     standardHeaders: true,
     legacyHeaders: false,
-    skip: () => process.env.NODE_ENV === 'test', // real rate limiting stays on in dev/production
+    skip: shouldSkipRateLimit, // real rate limiting stays on in dev/production
     message: { success: false, error: { message: 'Too many requests. Please slow down.' } },
 });
 app.use('/api', globalLimiter);
 
+// Friendly landing response for anyone who opens the API's base URL directly
+app.get('/', (req, res) =>
+  res.json({
+    name: 'ArthaGrid API',
+    docs: '/api-docs/',
+    health: '/health',
+    version: 'v1',
+    base: '/api/v1',
+  })
+);
+
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
+
+// Prometheus scrape endpoint — token-protected, fails closed (see
+// middleware/verifyMetricsToken.js and docs/observability.md)
+app.get('/metrics', verifyMetricsToken, async (req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.send(await register.metrics());
+});
 
 // API documentation (OpenAPI spec rendered with Swagger UI)
 const openapiDocument = YAML.load(path.join(__dirname, '..', 'docs', 'openapi.yaml'));

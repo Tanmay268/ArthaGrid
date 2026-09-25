@@ -4,6 +4,7 @@ const anomalyService = require('../services/anomaly.service');
 const recurringService = require('../services/recurring.service');
 const healthScoreService = require('../services/healthScore.service');
 const insightsService = require('../services/insights.service');
+const reportService = require('../services/report.service');
 
 const getMetrics = async (req, res) => {
   const data = await analyticsService.getMetrics(req.query);
@@ -35,4 +36,9 @@ const getInsights = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
-module.exports = { getMetrics, getForecast, getAnomalies, getRecurring, getHealthScore, getInsights };
+const getWeeklyReport = async (req, res) => {
+  const data = await reportService.getWeeklyReport();
+  res.status(200).json({ success: true, data });
+};
+
+module.exports = { getMetrics, getForecast, getAnomalies, getRecurring, getHealthScore, getInsights, getWeeklyReport };

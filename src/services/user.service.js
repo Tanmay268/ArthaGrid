@@ -47,6 +47,7 @@ const updateSelf = async (id, data) => {
 
     if (data.name) user.name = data.name;
     if (data.password) user.password = data.password;
+    if (data.weeklyReport !== undefined) user.preferences.weeklyReport = data.weeklyReport;
 
     await user.save();
     return sanitize(user);

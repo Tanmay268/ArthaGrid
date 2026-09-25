@@ -1,11 +1,13 @@
 const { Transaction } = require('../models/Transaction');
 const ApiError = require('../utils/ApiError');
 const anomalyService = require('./anomaly.service');
+const cache = require('../utils/cache');
 
 // ─── CREATE ─────────────────────────────────────────────────────────────────
 
 const createTransaction = async (data, userId) => {
   const transaction = await Transaction.create({ ...data, createdBy: userId });
+  cache.clear();
 
   // Non-blocking anomaly hint — never rejects the write, just flags it for
   // the caller (see decisions.md / anomaly.service.js). Only expenses are
@@ -49,7 +51,9 @@ const getTransactions = async (filters) => {
 
   // Run count and data fetch in parallel — faster than sequential
   const [total, transactions] = await Promise.all([
-    Transaction.countDocuments(query),
+    // countDocuments doesn't go through the pre(/^find/) soft-delete hook,
+    // so the filter has to be applied explicitly or deleted rows inflate `total`.
+    Transaction.countDocuments({ ...query, isDeleted: { $ne: true } }),
     Transaction.find(query)
       .populate('createdBy', 'name email role')
       .sort(sort)
@@ -93,6 +97,7 @@ const updateTransaction = async (id, data, userId) => {
   );
 
   if (!transaction) throw ApiError.notFound('Transaction not found');
+  cache.clear();
   return transaction;
 };
 
@@ -108,6 +113,7 @@ const deleteTransaction = async (id, userId) => {
   );
 
   if (!result) throw ApiError.notFound('Transaction not found');
+  cache.clear();
   return { message: 'Transaction deleted successfully' };
 };
 

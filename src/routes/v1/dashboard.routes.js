@@ -3,6 +3,7 @@ const controller = require('../../controllers/dashboard.controller');
 const authenticate = require('../../middleware/authenticate');
 const { authorize } = require('../../middleware/authorize');
 const validate = require('../../middleware/validate');
+const cacheResponse = require('../../middleware/cacheResponse');
 const {
   summarySchema,
   categorySchema,
@@ -12,6 +13,7 @@ const {
 
 router.use(authenticate);
 router.use(authorize('read:analytics'));
+router.use(cacheResponse); // after authorize on purpose - see middleware/cacheResponse.js
 
 router.get('/summary', validate(summarySchema, 'query'), controller.getSummary);
 router.get('/by-category', validate(categorySchema, 'query'), controller.getByCategory);

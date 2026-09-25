@@ -5,6 +5,7 @@ const { passwordComplexity } = require('./shared');
 const selfUpdateSchema = Joi.object({
     name: Joi.string().min(2).max(100),
     password: passwordComplexity,
+    weeklyReport: Joi.boolean(),
 }).min(1);
 
 const adminUpdateSchema = Joi.object({

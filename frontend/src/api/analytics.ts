@@ -8,6 +8,7 @@ import type {
   HealthScore,
   Insight,
   RecurringExpense,
+  WeeklyReport,
 } from '@/types/api';
 
 export function useAnalyticsMetrics() {
@@ -55,6 +56,14 @@ export function useInsights() {
   return useQuery({
     queryKey: ['analytics', 'insights'],
     queryFn: () => api.get<ApiEnvelope<Insight[]>>('/api/v1/analytics/insights'),
+    select: (res) => res.data,
+  });
+}
+
+export function useWeeklyReport() {
+  return useQuery({
+    queryKey: ['analytics', 'weekly-report'],
+    queryFn: () => api.get<ApiEnvelope<WeeklyReport>>('/api/v1/analytics/weekly-report'),
     select: (res) => res.data,
   });
 }

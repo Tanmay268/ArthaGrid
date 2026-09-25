@@ -6,10 +6,13 @@ export function AppLayout() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <div className="flex min-h-screen flex-1 flex-col">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <Topbar />
-        <main className="flex-1 overflow-y-auto bg-muted/30 p-4 md:p-6">
-          <Outlet />
+        {/* min-w-0 stops wide tables/charts from forcing horizontal page scroll on phones */}
+        <main className="min-w-0 flex-1 px-3 py-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-6">
+          <div className="mx-auto w-full max-w-7xl">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

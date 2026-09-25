@@ -4,11 +4,12 @@ const validate = require('../../middleware/validate');
 const extractRefreshToken = require('../../middleware/extractRefreshToken');
 const { registerSchema, loginSchema, refreshSchema, logoutSchema } = require('../../validators/auth.validator');
 const rateLimit = require('express-rate-limit');
+const { shouldSkipRateLimit } = require('../../config/rateLimit');
 
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, //15 minutes
     max: 10,
-    skip: () => process.env.NODE_ENV === 'test', // real rate limiting stays on in dev/production
+    skip: shouldSkipRateLimit, // real rate limiting stays on in dev/production
     message: {
         success: false,
         error: {

@@ -31,6 +31,11 @@ const issueTokenPair = async (userId) => {
     return { accessToken, refreshToken };
 };
 
+// Best-effort: a failed timestamp write must never fail a login.
+const touchLastLogin = (userId) => {
+    User.updateOne({ _id: userId }, { lastLoginAt: new Date() }).catch(() => {});
+};
+
 const sanitizeUser = (user) => ({
     id: user._id,
     name: user.name,
@@ -58,6 +63,7 @@ const login = async ({ email, password }) => {
     if (!user.isActive) throw ApiError.forbidden('Account deactivated');
 
     const tokens = await issueTokenPair(user._id);
+    touchLastLogin(user._id);
 
     return { user: sanitizeUser(user), ...tokens };
 };
@@ -91,6 +97,7 @@ const refresh = async (rawToken) => {
     stored.replacedByHash = newDoc.tokenHash;
     await stored.save();
 
+    touchLastLogin(user._id);
     const accessToken = generateAccessToken(user._id);
     return { accessToken, refreshToken: newRawToken };
 };

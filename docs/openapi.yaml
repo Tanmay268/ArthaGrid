@@ -6,10 +6,11 @@ info:
     role-based access control, transaction CRUD, budgets, a full
     analytics/insights engine (metrics, forecasting, anomaly detection,
     recurring-expense detection, a Financial Health Score, and rule-based
-    insights), and an AI Financial Copilot for plain-language Q&A. A React
+    insights), category suggestions, a weekly report, an admin overview, and an AI
+    Financial Copilot for plain-language Q&A. A React
     dashboard (frontend/) is built on top of this API — see the main repo's
     docs/architecture.md.
-  version: 1.4.0
+  version: 1.5.0
 servers:
   - url: /api/v1
 tags:
@@ -20,6 +21,7 @@ tags:
   - name: Budgets
   - name: Analytics
   - name: Copilot
+  - name: Admin
 
 paths:
   /auth/register:
@@ -155,6 +157,58 @@ paths:
         '201': { description: Transaction created }
         '403': { description: Role does not have write:transactions }
 
+  /transactions/suggest-category:
+    post:
+      tags: [Transactions]
+      summary: Suggest a category from a description and/or merchant (admin only)
+      description: >
+        Uses a small on-server classifier — nothing is sent to a third party.
+        It only suggests; the caller still chooses the category. When it isn't
+        confident it returns `suggestion: null` with a `reason`
+        (`low_confidence`, `no_known_words`, or `no_candidates`). The `score`
+        ranks candidates against each other — it is NOT a calibrated
+        probability.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: At least one of description or merchant is required.
+              properties:
+                description: { type: string, maxLength: 200, example: "uber ride to airport" }
+                merchant: { type: string, maxLength: 100, example: "Uber" }
+                type: { type: string, enum: [income, expense] }
+      responses:
+        '200':
+          description: A suggestion (or null) plus ranked alternatives
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      suggestion:
+                        nullable: true
+                        type: object
+                        properties:
+                          category: { type: string }
+                          score: { type: number }
+                      alternatives:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            category: { type: string }
+                            score: { type: number }
+                      reason: { type: string, description: "Present only when suggestion is null or below the confidence bar" }
+        '400': { description: Validation failed }
+        '403': { description: Role does not have write:transactions }
+
   /transactions/{id}:
     get:
       tags: [Transactions]
@@ -242,7 +296,7 @@ paths:
         '200': { description: Current user profile }
     patch:
       tags: [Users]
-      summary: Update your own name and/or password
+      summary: Update your own name, password and/or weekly-report opt-in
       security: [{ bearerAuth: [] }]
       requestBody:
         content:
@@ -252,6 +306,7 @@ paths:
               properties:
                 name: { type: string }
                 password: { type: string, format: password }
+                weeklyReport: { type: boolean, description: "Opt in/out of the weekly email report" }
       responses:
         '200': { description: Profile updated }
 
@@ -426,6 +481,37 @@ paths:
       responses:
         '200': { description: List of insight objects (type, text, backing data) }
 
+  /analytics/weekly-report:
+    get:
+      tags: [Analytics]
+      summary: The last 7 days compared with the 7 days before
+      description: >
+        The same data the weekly email report is built from: income, expenses,
+        savings, change vs last week, top category, biggest category changes,
+        unusual-transaction count (amount and category only — never a
+        description or merchant), and budget status. The ledger is a single
+        shared pool, so every caller gets the same report.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: The weekly report object }
+        '403': { description: Role does not have read:analytics }
+
+  /admin/stats:
+    get:
+      tags: [Admin]
+      summary: Platform overview (admin only)
+      description: >
+        Aggregate-only: user counts (total, active, new this month, active in
+        the last 30 days, by role), transaction count and daily average,
+        popular expense categories, and system health — request count,
+        average/p50/p95/p99 latency (estimated from histogram buckets), error
+        rates, memory, and whether MongoDB, Postgres, the copilot and email are
+        connected. Request numbers live in server memory and reset on restart.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Users, transactions and system stats }
+        '403': { description: Role does not have read:admin }
+
   /copilot/ask:
     post:
       tags: [Copilot]
@@ -462,6 +548,20 @@ paths:
       servers: [{ url: / }]
       responses:
         '200': { description: Service is up }
+
+  /metrics:
+    get:
+      tags: []
+      summary: Prometheus metrics
+      description: >
+        For Prometheus / Grafana, not for people. Requires
+        `Authorization: Bearer <METRICS_TOKEN>`; when METRICS_TOKEN isn't set
+        on the server it answers 401 to everyone.
+      servers: [{ url: / }]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Metrics in Prometheus text format }
+        '401': { description: Missing or wrong metrics token (or none configured) }
 
 components:
   securitySchemes:

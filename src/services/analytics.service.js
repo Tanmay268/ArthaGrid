@@ -8,33 +8,54 @@ const AVG_DAYS_PER_MONTH = 30.44;
 // Weekday vs weekend expense spending
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Counts how many weekend vs weekday calendar days fall in [from, to], inclusive.
+// UTC on purpose: Mongo's $dayOfWeek is UTC too, so the two agree.
+const countDays = (from, to) => {
+    let weekdays = 0;
+    let weekends = 0;
+    const cursor = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()));
+    const last = Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate());
+    while (cursor.getTime() <= last) {
+        const dow = cursor.getUTCDay(); // 0 = Sunday ... 6 = Saturday
+        if (dow === 0 || dow === 6) weekends += 1;
+        else weekdays += 1;
+        cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+    return { weekdays, weekends };
+};
+
+// avgPerDay = total spent on weekdays (or weekends) ÷ the number of such DAYS
+// in the data's span. (An earlier version divided by the number of
+// transactions, which is an average per transaction — a different question,
+// and one that made "weekend spending is X% higher" misleading.)
 const getWeekdayVsWeekend = async ({ startDate, endDate } = {}) => {
     const match = { ...buildDateMatch(startDate, endDate), type: 'expense' };
 
-    const rows = await Transaction.aggregate([
-        { $match: match },
-        {
-            $project: {
-                amount: 1,
-                // $dayOfWeek: 1 = Sunday ... 7 = Saturday
-                isWeekend: { $in: [{ $dayOfWeek: '$date' }, [1, 7]] },
+    const [rows, [span]] = await Promise.all([
+        Transaction.aggregate([
+            { $match: match },
+            {
+                $project: {
+                    amount: 1,
+                    // $dayOfWeek: 1 = Sunday ... 7 = Saturday
+                    isWeekend: { $in: [{ $dayOfWeek: '$date' }, [1, 7]] },
+                },
             },
-        },
-        {
-            $group: {
-                _id: '$isWeekend',
-                total: { $sum: '$amount' },
-                count: { $sum: 1 },
-            },
-        },
+            { $group: { _id: '$isWeekend', total: { $sum: '$amount' } } },
+        ]),
+        Transaction.aggregate([
+            { $match: match },
+            { $group: { _id: null, first: { $min: '$date' }, last: { $max: '$date' } } },
+        ]),
     ]);
 
-    const weekend = rows.find((r) => r._id === true) || { total: 0, count: 0 };
-    const weekday = rows.find((r) => r._id === false) || { total: 0, count: 0 };
+    const weekendTotal = rows.find((r) => r._id === true)?.total || 0;
+    const weekdayTotal = rows.find((r) => r._id === false)?.total || 0;
+    const { weekdays, weekends } = span ? countDays(span.first, span.last) : { weekdays: 0, weekends: 0 };
 
     return {
-        weekday: { total: round2(weekday.total), avgPerDay: weekday.count ? round2(weekday.total / weekday.count) : 0 },
-        weekend: { total: round2(weekend.total), avgPerDay: weekend.count ? round2(weekend.total / weekend.count) : 0 },
+        weekday: { total: round2(weekdayTotal), days: weekdays, avgPerDay: weekdays ? round2(weekdayTotal / weekdays) : 0 },
+        weekend: { total: round2(weekendTotal), days: weekends, avgPerDay: weekends ? round2(weekendTotal / weekends) : 0 },
     };
 };
 
@@ -48,7 +69,7 @@ const getCategoryGrowth = async () => {
     const startLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
     const rows = await Transaction.aggregate([
-        { $match: { type: 'expense', date: { $gte: startLastMonth, $lte: now } } },
+        { $match: { isDeleted: { $ne: true }, type: 'expense', date: { $gte: startLastMonth, $lte: now } } },
         {
             $group: {
                 _id: {

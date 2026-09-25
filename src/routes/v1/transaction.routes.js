@@ -8,6 +8,7 @@ const {
     createTransactionSchema,
     updateTransactionSchema,
     queryTransactionSchema,
+    suggestCategorySchema,
 } = require('../../validators/transaction.validator');
 
 // All transaction routes require authentication
@@ -26,6 +27,15 @@ router.get(
     '/:id',
     authorize('read:transactions'),
     controller.getOne
+);
+
+// POST /suggest-category - same gate as creating a transaction, since it only
+// exists to help fill in the create form (declared before any /:id route)
+router.post(
+    '/suggest-category',
+    authorize('write:transactions'),
+    validate(suggestCategorySchema),
+    controller.suggestCategory
 );
 
 // POST - only Admin can create

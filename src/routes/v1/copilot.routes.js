@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const rateLimit = require('express-rate-limit');
+const { shouldSkipRateLimit } = require('../../config/rateLimit');
 const controller = require('../../controllers/copilot.controller');
 const authenticate = require('../../middleware/authenticate');
 const { authorize } = require('../../middleware/authorize');
@@ -14,7 +15,7 @@ const copilotLimiter = rateLimit({
     max: 20,
     standardHeaders: true,
     legacyHeaders: false,
-    skip: () => process.env.NODE_ENV === 'test',
+    skip: shouldSkipRateLimit,
     message: { success: false, error: { message: 'Too many questions. Please try again later.' } },
 });
 

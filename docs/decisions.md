@@ -219,3 +219,55 @@ Like Postgres (decision #17), this is optional at the code level: without `GEMIN
 **Cookie attributes, and a correction made while actually building this:** the original plan called for `SameSite=Strict`, written before the deployment topology was pinned down. That would have been wrong — the frontend (Vercel) and the API (Render) are deployed on different domains, and `SameSite=Strict` (or even `Lax`) blocks a cookie from being sent on cross-site requests at all, which would make the cookie useless for exactly the client it exists for. The actual settings, in `src/utils/cookies.js`: `Secure` + `SameSite=None` in production (required together — browsers only honor `SameSite=None` over HTTPS), and `SameSite=Lax` without `Secure` for local `http://` development, where frontend and API differ only by port and are therefore still "same-site" by the cookie spec's own definition (the site comparison ignores port).
 
 **Trade-off:** The API now has two ways to carry the same token (JSON body and cookie), which is slightly more surface area. More importantly, `SameSite=None` reopens a CSRF door that `Strict`/`Lax` would otherwise close: a plain cross-site `<form>` POST rides along with the ambient cookie, no JavaScript required, and could trigger a refresh-token rotation the legitimate frontend didn't ask for. This is mitigated with a custom header (`X-ArthaGrid-Client: web`), required by `extractRefreshToken` whenever the token's source is the cookie rather than the body: a bare HTML form can never set a custom header, and a script that does set one forces a CORS preflight, which only succeeds for the configured `CORS_ORIGIN`. This is a standard, lightweight mitigation for cookie+JSON APIs — not a full CSRF-token scheme, which would be more machinery than this narrow surface (one endpoint, no state-changing side effect beyond rotating a token that's revocable anyway) justifies. The cookie itself stays deliberately narrow in scope: only ever read for the refresh/logout flow; the access token continues to be sent as a normal `Authorization` header on every other request, unaffected by any of this.
+
+---
+
+**A note on entries #22–26:** these cover the "roadmap" items that were first deferred and then built (auto-categorization, weekly email reports, the admin dashboard, observability, load testing). Same rule as above — each describes something built and tested; check [upgrades.md](./upgrades.md) for status.
+
+### 22. An in-process response cache with request coalescing, not Redis
+
+**Decision:** The expensive read-only analytics endpoints (`/analytics/*`, `/dashboard/*`) are cached in memory for 30 seconds (`ANALYTICS_CACHE_TTL_SECONDS`, `0` turns it off). Every successful write to transactions or budgets clears the cache. When several requests ask for the same uncached answer at once, only the first does the work and the rest wait for and share its result ("single-flight" coalescing). The cache is mounted *after* authentication and role checks, so a caller who isn't allowed to see a response can never be handed a cached copy of it.
+
+**Why:** The load test ([load-testing.md](./load-testing.md)) showed the analytics endpoints are the bottleneck: without a cache, 100 simultaneous users pushed `/analytics/insights` to a ~6 s p95. A 30-second cache lifted throughput about 3.7× on the same laptop. Free hosting runs exactly one instance, so a shared cache (Redis) would add a service to host without any benefit — every request already reaches the same process. Coalescing was added because the first cache-only version *still* showed a ~7 s worst case: when an entry expired, every waiting request recomputed it at once (a "cache stampede"). The load test found that; the unit tests hadn't.
+
+**Trade-off:** Data can be up to 30 seconds stale for reads *after someone else's write on another instance* — with a single instance, writes clear the cache immediately, so users see their own changes at once. If the app ever runs on more than one instance, each holds its own cache and can be up to 30 s behind the others; at that point, swap `src/utils/cache.js` for Redis (callers only use get/set/clear, so nothing else changes). The cache is capped at 200 entries so memory can't grow without bound on a 512 MB host. It is off by default in tests so seeded data can't leak between them.
+
+---
+
+### 23. Auto-categorization with a small on-server text classifier, not an external ML/LLM service
+
+**Decision:** `POST /api/v1/transactions/suggest-category` suggests a category from a description/merchant using a hand-written Naive Bayes classifier (words + character trigrams) inside the API process. It learns from a small built-in seed list plus the ledger's own already-categorized transactions (weighted higher), and **abstains** — returns no suggestion — when it isn't confident enough. It only ever *suggests*; the user still picks the category.
+
+**Why:** The earlier roadmap deferred this because a new account has no history to learn from. The seed list solves the cold start, and the ledger data improves it over time. Doing it in-process keeps it free, instant, private (nothing is sent to a third party — unlike the copilot, decision #19), and dependency-free. An LLM call per keystroke would burn the Gemini free quota and leak descriptions.
+
+**Trade-off / honesty about accuracy:** on the 191 built-in seed phrases, 5-fold cross-validation gave **49.2%** accuracy (94/191) — a pessimistic number, because each fold removes whole merchants the model then has never seen. On a separate hand-written held-out set of 37 realistic descriptions (`tests/fixtures/categorizerHoldout.js`), accuracy is **94.6%** (35/37) — but that set is small, and written by the same person who wrote the seed list, so it is optimistic. Both numbers are real; the truth is somewhere in between and depends on how familiar the merchants are. The "score" it returns is a relative ranking, **not a calibrated probability**, and the docs/UI don't call it one. `npm run eval:categorizer` reproduces both numbers. It will not understand a merchant it has never seen and will say so rather than guess.
+
+---
+
+### 24. Weekly email reports sent through an HTTPS email API (Resend), not SMTP
+
+**Decision:** Users can opt in (Settings → "Weekly email report"). A scheduled GitHub Actions workflow (`weekly-report.yml`) calls `POST /api/v1/internal/jobs/weekly-report` with the shared `X-Cron-Secret`; the API sends each opted-in user the same summary email via Resend's HTTPS API using plain `fetch`, no SDK. Optional like Postgres and Gemini: with `RESEND_API_KEY` unset, the job reports "skipped" and the workflow still succeeds.
+
+**Why HTTPS instead of SMTP (nodemailer):** Render's free tier blocks outbound SMTP ports (25/465/587), so an SMTP library would work on a laptop and silently fail in production. Sending over HTTPS (port 443) works everywhere.
+
+**Trade-offs:** (1) Resend's free tier limits volume, and until you verify your own domain it can only send from its sandbox address to the account owner's email — fine for a demo, which is why `REPORT_FROM_EMAIL` is configurable. (2) Registration doesn't verify that someone owns the email they type in, so anyone could sign up with another person's address and opt them in. `REPORT_ALLOWED_RECIPIENTS` (comma-separated) is a safety net: when set, only those addresses are ever emailed. Verified-email registration is the proper fix and is not built. (3) The report is computed once and is identical for everyone (the ledger is a single shared pool), which is why it can be a single computation rather than one per user.
+
+---
+
+### 25. Observability: Prometheus-format metrics behind a token, no OpenTelemetry
+
+**Decision:** The API exposes `GET /metrics` in Prometheus text format (request counts, latency histograms, process stats via `prom-client`), protected by `Authorization: Bearer $METRICS_TOKEN`. With `METRICS_TOKEN` unset the endpoint returns 401 to everyone (fail closed). Route labels are normalized (`/transactions/:id`) and unknown paths are grouped under `unmatched`, so a scanner hitting random URLs can't create unlimited metric series and exhaust memory. A separate, JWT-protected `GET /api/v1/admin/stats` feeds the admin dashboard page in the frontend.
+
+**Why:** Free Grafana Cloud accepts Prometheus scrapes, so this gives real dashboards with no self-hosted server. See [observability.md](./observability.md).
+
+**Trade-offs:** In-process metrics reset when the (free, sleeping) Render instance restarts, and counters live per instance. Latency percentiles shown in the admin page are *estimated* from histogram buckets, not exact. OpenTelemetry tracing was **not** built — traces need a collector to be useful, which needs a host; it stays on the roadmap.
+
+---
+
+### 26. Behind a proxy: `trust proxy = 1`, and a rate-limit bypass that can't be enabled in production
+
+**Decision:** In production the app sets `trust proxy` to 1 (Render puts exactly one proxy in front of it) so `req.ip` is the real client, not the proxy. A `DISABLE_RATE_LIMIT=true` switch exists for load testing, but it is honored only when `NODE_ENV` is not `production`.
+
+**Why:** Without `trust proxy`, every user on Render appears to have the proxy's IP, so all users share one rate-limit bucket — one busy user could lock everyone out. And load testing needs the limiter off, but a limiter that can be switched off by one environment variable is a security hole if that variable is ever set by mistake in production.
+
+**Trade-off:** `trust proxy = 1` is only correct while there is exactly one proxy hop in front of the app; if deployed behind a CDN plus a load balancer, the number must change or clients could spoof their IP via `X-Forwarded-For`.

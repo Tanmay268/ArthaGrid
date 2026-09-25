@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { ApiEnvelope, Transaction, TransactionsResponse } from '@/types/api';
+import type { ApiEnvelope, CategorySuggestion, Transaction, TransactionsResponse } from '@/types/api';
 
 export interface TransactionFilters {
   page?: number;
@@ -62,5 +62,12 @@ export function useDeleteTransaction() {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/transactions/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['transactions'] }),
+  });
+}
+
+export function useSuggestCategory() {
+  return useMutation({
+    mutationFn: (input: { description?: string; merchant?: string; type: 'income' | 'expense' }) =>
+      api.post<ApiEnvelope<CategorySuggestion>>('/api/v1/transactions/suggest-category', input),
   });
 }

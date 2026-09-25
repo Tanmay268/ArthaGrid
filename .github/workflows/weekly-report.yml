@@ -1,0 +1,35 @@
+name: Weekly report
+
+# Emails the weekly financial report to users who opted in (Settings ->
+# "Weekly email report"). Same pattern as rollup.yml: free hosting has no
+# always-on worker, so a scheduled workflow calls a secret-protected endpoint
+# (docs/decisions.md #18, #24).
+#
+# Uses the same two repository secrets as rollup.yml:
+#   RENDER_API_URL, CRON_SECRET
+# The API itself needs RESEND_API_KEY set, otherwise this run just reports
+# "skipped" — it never fails the workflow over missing optional config.
+
+on:
+  schedule:
+    # Sundays 02:30 UTC = 08:00 IST
+    - cron: '30 2 * * 0'
+  workflow_dispatch: {}
+
+jobs:
+  weekly-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call the internal weekly-report endpoint
+        run: |
+          status=$(curl --silent --show-error --fail-with-body \
+            --output response.json --write-out "%{http_code}" \
+            --max-time 120 \
+            --request POST "${RENDER_API_URL}/api/v1/internal/jobs/weekly-report" \
+            --header "X-Cron-Secret: ${CRON_SECRET}")
+
+          echo "HTTP status: $status"
+          cat response.json
+        env:
+          RENDER_API_URL: ${{ secrets.RENDER_API_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

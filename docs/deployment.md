@@ -1,8 +1,8 @@
 # Deployment (free tier, step by step)
 
-This is a plain-language walkthrough for putting ArthaGrid online without paying for anything. It uses five separate free services. That sounds like a lot, but each one takes a few minutes to set up, and none of them need a credit card.
+This is a plain-language walkthrough for putting ArthaGrid online without paying for anything. It uses five core free services, plus two optional extras (email reports and metrics). That sounds like a lot, but each one takes a few minutes to set up, and none of them need a credit card.
 
-**Status check:** every step below works with the code as it exists today — the API, the Postgres schema, the copilot endpoint, the `frontend/` app, and the GitHub Actions workflow file are all built and tested. Nothing here is "coming soon" — you just need to actually create the five free accounts and set the environment variables below to switch each piece on. See [upgrades.md](./upgrades.md) for the full build history if you want it.
+**Status check:** every step below works with the code as it exists today — the API, the Postgres schema, the copilot endpoint, the email report job, the metrics endpoint, the `frontend/` app, and both GitHub Actions workflow files are all built and tested. Nothing here is "coming soon" — you just need to actually create the five free accounts and set the environment variables below to switch each piece on. See [upgrades.md](./upgrades.md) for the full build history if you want it.
 
 For *why* these particular services were chosen (and what their free-tier limits actually are), see the table at the bottom of [architecture.md](./architecture.md#deployment-free-tier). This page is just the "how."
 
@@ -62,10 +62,30 @@ This one needs no separate account — it runs inside this same GitHub repo.
    - `CRON_SECRET` — the same value you set on Render in step 4.
 2. That's it — `.github/workflows/rollup.yml` is already set up to run once a day and call `POST {RENDER_API_URL}/api/v1/internal/jobs/rollup` with that secret in a header. You can also trigger it manually from the Actions tab to test it before waiting for the schedule.
 
+## 7. Optional extras
+
+Both are off until you set their variables; the app runs fine without them.
+
+**Weekly email report (Resend)**
+
+1. Create a free account at [resend.com](https://resend.com) and make an API key.
+2. On Render, set `RESEND_API_KEY`. Until you verify your own domain in Resend, it can only send from its sandbox address to *your own* Resend account email, so also set `REPORT_ALLOWED_RECIPIENTS` to that address.
+3. Set `REPORT_ALLOWED_RECIPIENTS` in any case for a public deployment: registration doesn't check that people own the email they type, so without this list anyone could opt someone else's address into reports.
+4. `.github/workflows/weekly-report.yml` runs Sundays and reuses the **same two secrets** as the rollup job (`RENDER_API_URL`, `CRON_SECRET`) — nothing new to add on GitHub. Test it from the Actions tab (**Run workflow**). A user then opts in from **Settings → Weekly email report**.
+5. Why Resend and not ordinary email (SMTP)? Render's free tier blocks the SMTP ports, so it would work on your laptop and silently fail online. See [decisions.md](./decisions.md) #24.
+
+**Metrics (Grafana Cloud)**
+
+Set `METRICS_TOKEN` on Render and follow [observability.md](./observability.md). Without the token, `/metrics` refuses everyone.
+
+**Speed:** the 30-second response cache is on by default in production (`ANALYTICS_CACHE_TTL_SECONDS=0` turns it off). See [load-testing.md](./load-testing.md) for what it buys.
+
+**Do not** set `DISABLE_RATE_LIMIT` on Render. It is ignored in production on purpose, but there is no reason to set it.
+
 ## Checking it worked
 
 1. Visit `https://<your-render-url>/health` — should return `{ "status": "ok" }`.
-2. Visit `https://<your-render-url>/api-docs` — the interactive API documentation should load.
+2. Visit `https://<your-render-url>/api-docs` — the interactive API documentation should load. The same path on your Vercel URL (`/api-docs`) forwards to it.
 3. Visit your Vercel URL — the dashboard should load and be able to log in against the Render API.
 4. From the GitHub Actions tab, manually run the "rollup" workflow once and check it completes without an error — that confirms Render, Postgres, and the shared secret are all wired together correctly.
 

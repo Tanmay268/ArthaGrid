@@ -12,7 +12,7 @@ export function useMe() {
 
 export function useUpdateMe() {
   return useMutation({
-    mutationFn: (input: { name?: string; password?: string }) =>
+    mutationFn: (input: { name?: string; password?: string; weeklyReport?: boolean }) =>
       api.patch<ApiEnvelope<User>>('/api/v1/users/me', input),
   });
 }

@@ -39,6 +39,30 @@ describe('GET /api/v1/analytics/metrics', () => {
     });
 });
 
+describe('weekday vs weekend spending', () => {
+    it('averages per DAY (total ÷ days in the span), not per transaction', async () => {
+        const { token, user } = await createUserWithToken({ role: 'admin' });
+
+        // Mon 2024-01-01 .. Sun 2024-01-07: 5 weekdays + 2 weekend days.
+        // Weekday: two transactions on Monday (100 + 100) = 200 over 5 weekdays  -> 40/day
+        // Weekend: one transaction on Saturday (140) over 2 weekend days         -> 70/day
+        // (A per-transaction average would have said 100 and 140 — a different question.)
+        await Transaction.create([
+            { amount: 100, type: 'expense', category: 'food', date: new Date('2024-01-01T10:00:00Z'), createdBy: user._id },
+            { amount: 100, type: 'expense', category: 'food', date: new Date('2024-01-01T18:00:00Z'), createdBy: user._id },
+            { amount: 140, type: 'expense', category: 'food', date: new Date('2024-01-06T12:00:00Z'), createdBy: user._id },
+            { amount: 0.01, type: 'expense', category: 'food', date: new Date('2024-01-07T12:00:00Z'), createdBy: user._id }, // extends the span to Sunday
+        ]);
+
+        const res = await request(app).get('/api/v1/analytics/metrics').set('Authorization', `Bearer ${token}`);
+        const { weekday, weekend } = res.body.data.weekdayVsWeekend;
+
+        expect(weekday).toMatchObject({ total: 200, days: 5, avgPerDay: 40 });
+        expect(weekend.days).toBe(2);
+        expect(weekend.avgPerDay).toBe(70.01); // (140 + 0.01) / 2 = 70.005, rounded to 2 dp
+    });
+});
+
 describe('GET /api/v1/analytics/forecast', () => {
     it('produces a linear-regression forecast from monthly history', async () => {
         const { token, user } = await createUserWithToken({ role: 'admin' });

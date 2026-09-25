@@ -18,16 +18,21 @@ ArthaGrid is an intelligent personal-finance analytics platform — it tracks in
 - **Postgres analytics rollups** *(optional)* — a second free database (Neon) that the forecast endpoint reads from once populated, keeping multi-month queries fast as data grows; entirely optional — without it configured, everything computes live from MongoDB exactly as before
 - **Scheduled rollup job** — a GitHub Actions workflow standing in for a background worker (no free host provides one for free), calling a shared-secret-protected internal endpoint on a daily schedule
 - **AI Financial Copilot** *(optional)* — ask questions like "why did my expenses increase?", answered by Google Gemini's free tier from a small, explicitly allow-listed bundle of pre-computed aggregate numbers — a transaction's raw description/merchant text is never sent, which is asserted by an automated test, not just documented. Without a Gemini key configured, the endpoint returns 503 rather than failing to start
-- **React dashboard** (`frontend/`) — Overview, Analytics, Budgets, Forecast, Insights, an "Ask ArthaGrid" copilot page, Transactions, and Settings
+- **Auto-categorization** — suggests a category from a transaction's description; a small on-server classifier (no third-party call) that says "not sure" instead of guessing. Accuracy numbers, good and bad, are in [docs/decisions.md](docs/decisions.md) #23
+- **Weekly email report** *(optional)* — opt-in from Settings, sent by a scheduled GitHub Actions job through Resend's free HTTPS API
+- **Admin dashboard** and **Prometheus `/metrics`** — platform stats and latency numbers for admins; a token-protected metrics endpoint for Grafana ([docs/observability.md](docs/observability.md))
+- **Load-tested** — a free k6 script and a self-contained test server; measured results and their limits in [docs/load-testing.md](docs/load-testing.md). A small in-process response cache (with request coalescing) came out of it: about 3.7× the throughput at 100 simulated users
+- **React dashboard** (`frontend/`) — Overview, Analytics, Budgets, Forecast, Insights, an "Ask ArthaGrid" copilot page, Transactions, Settings and an Admin page. **Light/dark/system theme toggle**, a mobile-friendly layout (slide-out navigation, tables that turn into cards on phones), toast notifications, loading skeletons and lazy-loaded pages
 - **User management** — self-service profile updates plus admin-driven user control
 - **Hardened by default** — Helmet, credentialed CORS, rate limiting, NoSQL injection sanitization, structured logging (Pino), environment validation, graceful shutdown
-- **API docs** via Swagger UI at `/api-docs`
+- **API docs** via Swagger UI at `/api-docs` — on the API's own address, and the frontend's `/api-docs` forwards to it
 
 See [docs/context.md](docs/context.md) for the full project rationale, [docs/architecture.md](docs/architecture.md) for system design, and [docs/decisions.md](docs/decisions.md) for the reasoning behind key technical choices.
 
 ## Tech stack
 
 Backend: Node.js, Express, MongoDB (Mongoose), Postgres (`pg`, optional — analytics rollups), Google Gemini API (optional — AI copilot, called via plain `fetch`, no SDK), JWT, Joi, Pino, Jest + Supertest. Analytics/forecasting/anomaly-detection math is hand-rolled in plain JS (`src/utils/stats.js`) rather than an added dependency.
+Metrics & load testing: `prom-client`, k6.
 Frontend: React, TypeScript, Vite, Tailwind, hand-authored shadcn-style UI primitives, Recharts, TanStack Query, React Router, Zustand.
 
 ## Getting started
@@ -59,6 +64,11 @@ Fill in `.env`:
 | `CRON_SECRET` | Shared secret the scheduled rollup job (GitHub Actions) must send (as `X-Cron-Secret`) to trigger `POST /internal/jobs/rollup`. Without it set, that endpoint rejects every request |
 | `GEMINI_API_KEY` *(optional)* | Google Gemini API key, for the AI Financial Copilot. Leave unset and `POST /copilot/ask` returns `503` instead |
 | `GEMINI_MODEL` *(optional)* | Which Gemini model to call — defaults to `gemini-2.5-flash` if unset |
+| `RESEND_API_KEY` *(optional)* | Resend API key for the weekly email report. Unset = the weekly job reports "skipped" |
+| `REPORT_FROM_EMAIL` *(optional)* | Sender address for the report (defaults to Resend's sandbox sender) |
+| `REPORT_ALLOWED_RECIPIENTS` *(optional)* | Comma-separated list; when set, only these addresses are ever emailed (registration doesn't verify email ownership) |
+| `METRICS_TOKEN` *(optional)* | Bearer token protecting `GET /metrics`. Unset = `/metrics` returns 401 |
+| `ANALYTICS_CACHE_TTL_SECONDS` *(optional)* | Response-cache lifetime in seconds (default `30`; `0` turns it off) |
 | `CORS_ORIGIN` *(optional)* | The frontend's deployed URL, allowed to call this API with credentials (needed for the refresh-token cookie). Leave unset in local development — the request's own origin is reflected back instead |
 
 ### Run
@@ -77,6 +87,15 @@ docker compose up
 ```
 
 This starts the API alongside a local MongoDB container — no local Node or MongoDB install required.
+
+### Load testing
+
+Free, local, no accounts — see [docs/load-testing.md](docs/load-testing.md) for the simple steps and the results. In short: install [k6](https://k6.io), then
+
+```bash
+npm run loadtest:server          # terminal 1 — real app on an in-memory database
+k6 run loadtest/k6/load.js       # terminal 2
+```
 
 ### Tests
 
@@ -120,6 +139,10 @@ All endpoints are versioned under `/api/v1`. Full request/response schemas are i
 | Budgets | `/api/v1/budgets` | Per-category monthly limits + progress; read: all roles, write: Admin |
 | Analytics | `/api/v1/analytics` | `metrics`, `forecast`, `anomalies`, `recurring`, `health-score`, `insights` — analyst/admin |
 | Copilot | `/api/v1/copilot` | `ask` — plain-language Q&A over aggregate data; analyst/admin, 20 requests/hour |
+| Admin | `/api/v1/admin` | `stats` — platform overview; admin only |
+| Also | `/health`, `/metrics`, `/api-docs` | uptime check; Prometheus metrics (bearer `METRICS_TOKEN`); Swagger UI |
+
+`analytics` also has `weekly-report`, and `transactions` has `suggest-category` (admin, same gate as creating one).
 
 ### Roles
 
@@ -135,15 +158,16 @@ All endpoints are versioned under `/api/v1`. Full request/response schemas are i
 src/
   config/       # env validation, DB + Postgres connections, logger
   controllers/  # request handlers
-  services/     # business logic, incl. analytics/forecast/anomaly/recurring/healthScore/insights/budget/rollup/copilot
+  services/     # business logic, incl. analytics/forecast/anomaly/recurring/healthScore/insights/budget/rollup/copilot/categorize/report/email/admin
   models/       # Mongoose schemas (User, Transaction, RefreshToken, Budget)
-  middleware/   # auth, authorization, validation, error handling, verifyCronSecret, extractRefreshToken
-  routes/v1/    # route definitions (auth, transactions, dashboard, users, budgets, analytics, copilot, internal)
+  middleware/   # auth, authorization, validation, error handling, verifyCronSecret, verifyMetricsToken, cacheResponse, extractRefreshToken
+  routes/v1/    # route definitions (auth, transactions, dashboard, users, budgets, analytics, copilot, admin, internal)
   validators/   # Joi schemas
   db/           # schema.sql — the one Postgres rollup table
   utils/        # ApiError, cookies.js, stats.js (mean/stddev/z-score/linear-regression helpers)
 frontend/       # React dashboard — separate app, own package.json, deployed to Vercel
-docs/           # architecture, decisions, deployment guide, and OpenAPI spec
+loadtest/       # k6 script, in-memory test server, results
+docs/           # architecture, decisions, deployment, load-testing, observability, and the OpenAPI spec
 tests/          # Jest + Supertest suite
 ```
 
@@ -151,4 +175,4 @@ See [docs/architecture.md](docs/architecture.md) for the frontend's internal lay
 
 ## Deployment
 
-ArthaGrid is **designed** to run entirely on free-tier hosting, and every piece is code-ready and tested: Render (API), MongoDB Atlas, Neon Postgres, GitHub Actions (scheduled rollup), Google Gemini (copilot), and Vercel (frontend). See [docs/deployment.md](docs/deployment.md) for the step-by-step guide to actually creating those accounts, and [docs/architecture.md](docs/architecture.md#deployment-free-tier) for the reasoning and known free-tier trade-offs (cold starts, rate limits, etc.).
+ArthaGrid is **designed** to run entirely on free-tier hosting, and every piece is code-ready and tested: Render (API), MongoDB Atlas, Neon Postgres, GitHub Actions (scheduled rollup and weekly report), Google Gemini (copilot), Resend (optional email), and Vercel (frontend). See [docs/deployment.md](docs/deployment.md) for the step-by-step guide to actually creating those accounts, and [docs/architecture.md](docs/architecture.md#deployment-free-tier) for the reasoning and known free-tier trade-offs (cold starts, rate limits, etc.).
