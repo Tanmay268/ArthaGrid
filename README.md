@@ -96,7 +96,7 @@ Fill in `.env`:
 | `POSTGRES_URL` *(optional)* | Postgres connection string, for analytics rollups (e.g. from Neon). Leave unset and analytics just computes live from MongoDB instead |
 | `CRON_SECRET` | Shared secret the scheduled rollup job (GitHub Actions) must send (as `X-Cron-Secret`) to trigger `POST /internal/jobs/rollup`. Without it set, that endpoint rejects every request |
 | `GEMINI_API_KEY` *(optional)* | Google Gemini API key, for the AI Financial Copilot. Leave unset and `POST /copilot/ask` returns `503` instead |
-| `GEMINI_MODEL` *(optional)* | Which Gemini model to call — defaults to `gemini-2.5-flash` if unset |
+| `GEMINI_MODEL` *(optional)* | Which Gemini model to call — defaults to `gemini-3.8-flash` if unset |
 | `RESEND_API_KEY` *(optional)* | Resend API key for the weekly email report. Unset = the weekly job reports "skipped" |
 | `REPORT_FROM_EMAIL` *(optional)* | Sender address for the report (defaults to Resend's sandbox sender) |
 | `REPORT_ALLOWED_RECIPIENTS` *(optional)* | Comma-separated list; when set, only these addresses are ever emailed (registration doesn't verify email ownership) |

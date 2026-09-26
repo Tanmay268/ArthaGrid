@@ -265,6 +265,8 @@ A few choices shape how this project behaves. Here's each one in plain language:
 
 **How it can grow further, cheapest first:** (1) the cache — done; (2) the optional Postgres summary table — built; (3) database indexes as data grows; (4) tidying a repeated-query pattern in the unusual-transaction check; (5) a shared cache such as Redis (free tiers exist) once there is more than one server; (6) a bigger database tier — the free MongoDB tier's ~100 operations per second is the real ceiling on the free plan.
 
+**And on the real free hosting?** We also ran a light test (5 users, 20 seconds, browsing only) against the live free deployment from a home laptop. Typical wait was about 1 second and the slowest 5% took about 2.6 seconds. Out of 92 requests, 5 failed because the connection was dropped mid-request; we have not yet identified whether that came from the free hosting or something else, so we treat it as an open item rather than a pass. This one run says how a few real visitors would experience the free tier — it says nothing about how many people it can handle.
+
 **What we are *not* claiming:** we did not test thousands of people, and we did not test the real Render + MongoDB Atlas setup. These numbers show the *shape* of the system's behaviour and that the fixes work; they are not a production guarantee.
 
 ---

@@ -63,6 +63,16 @@ ANALYTICS_CACHE_TTL_SECONDS=30 npm run loadtest:server
 node loadtest/summarize.js loadtest/results/*.json
 ```
 
+**Testing a deployed server — read this first**
+
+- **Use an admin account.** The test calls analyst endpoints and writes transactions. With a Viewer or Analyst account most requests come back `403`, which looks like "70% of requests failed" but is really the wrong account. The script now checks this in its setup step and stops with a clear message instead.
+- **Expect the thresholds to fail.** They are set for a fast machine (800 ms). Over the internet to a free Render instance, every request pays a network round trip (a rejected request alone took 0.5–1.5 s in one run), and login is far slower because bcrypt (cost 12) runs on a small shared CPU — about 5 s at p95 in that same run. That is the free tier, not a bug; compare it with the local numbers in section 3 to see the gap.
+- **Production rate limits are real, and they are per IP.** Login and other `/auth` calls allow **10 per 15 minutes**, and every API route allows **300 requests per 15 minutes**. (`DISABLE_RATE_LIMIT` is ignored in production on purpose.) So against a deployed server:
+  - The script sends **no login traffic by default** (`LOGIN_RATE=0`); locally it sends one per second. A login every second would only measure the limiter — in one run 15 of 19 logins failed for this reason — and it also uses up the budget you need to log in to the app yourself. The single login in the setup step still counts.
+  - Two short runs can use up the 300-request budget. Use `-e WRITE_RATE=0`, keep runs short (`VUS=5 DURATION=20s`), and wait 15 minutes between runs. If the app shows "Too many requests" right after a test, that is why — wait it out.
+- **The test creates data.** Writes add "k6 load test" transactions to the live database. Delete them afterwards.
+- **Slow targets need more workers.** The login and write scenarios can now grow to 20 virtual users so k6 doesn't drop iterations when responses are slow.
+
 > ⚠️ Don't test the free Render deployment hard. The free tier has limited CPU and a monthly bandwidth/hours budget, and hammering someone else's shared machine is rude. Run the heavy tests locally; do at most a short, light run (e.g. `VUS=5 DURATION=20s`) against the deployed URL, and wake it up first with a single request.
 
 ---
@@ -129,6 +139,27 @@ The first time we ran the cache-on test at 100 users, `/analytics/insights` was 
 Fix: **request coalescing** ("single-flight") — if a calculation for the same key is already running, later requests wait for it and share the result. After the fix, the slowest request dropped from 7.1 s to 1.4 s. (A unit test in `tests/observability.test.js` proves the calculation now runs once for concurrent requests.)
 
 Honest note: overall p95 at 100 users was 536 ms before the fix and 701 ms after. That difference is within run-to-run noise on a shared laptop; the meaningful improvement is the worst case (max latency) and the insights endpoint, not the overall p95.
+
+### 3d. The real deployment: free Render, tested from a laptop over the internet (one run)
+
+**Setup:** the deployed API on Render's free plan (`arthagrid.onrender.com`), k6 running on a home laptop, **5 users for 20 seconds, reads only** (no writes, no logins — see the rate-limit note in section 1). One run, not repeated. This is the closest thing to what a real visitor experiences, and it is a very different situation from 3a–3c.
+
+| Measure | Result |
+|---|---|
+| Requests | 92 (3.4 per second) |
+| Average response time | 1.02 s |
+| p95 response time | 2.56 s |
+| Fastest / slowest response | 0.09 s / 4.0 s |
+| Failed requests | **5 of 92 (5.4%)** |
+
+p95 by endpoint: forecast 0.70 s · metrics 1.25 s · summary 1.41 s · budgets 1.57 s · transactions 2.36 s · insights 3.09 s.
+
+How to read it, honestly:
+
+- **The 5 failures were dropped connections, not error responses.** k6 reported `An existing connection was forcibly closed by the remote host` for five requests, all within about a second of each other. No HTTP error status came back. **We do not know the cause.** Candidates: the free instance or Render's proxy resetting connections, or a brief instance restart. The Render dashboard's Logs and Events for that minute would say which. Until that is checked, do not present this as a clean result.
+- **Slower than local, as expected.** The 800 ms target was missed on five of the six endpoints. Every request pays an internet round trip, and a free instance has a small, shared CPU. Compare: locally with 10 users and no cache, p95 was 879 ms (3a).
+- **3.4 requests per second is not the server's capacity.** Five users each waiting on slow responses cannot send more than that. It says nothing about the maximum.
+- **Small and single.** Five users, one run, one network. It shows what a handful of real visitors would experience on the free tier; it does not show how the deployment behaves under load.
 
 ---
 

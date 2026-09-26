@@ -17,7 +17,8 @@ export function LoginPage() {
   const location = useLocation();
 
   if (status === 'authenticated') {
-    const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? '/';
+    const requestedPath = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
+    const from = requestedPath && requestedPath !== '/login' && requestedPath !== '/register' ? requestedPath : '/';
     return <Navigate to={from} replace />;
   }
 

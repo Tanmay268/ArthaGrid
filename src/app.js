@@ -42,6 +42,12 @@ app.use(mongoSanitize()); // strips $ / . operators from user input to block NoS
 app.use(morgan('dev'));
 app.use(metricsMiddleware);
 
+// Older builds served Swagger at /api/docs, and that link is in READMEs, CVs and
+// bookmarks. Redirect it to the current /api-docs. Registered BEFORE the global
+// limiter so a link-checker or health probe on the old path doesn't spend the
+// caller's 300-request budget.
+app.get(['/api/docs', '/api/docs/'], (req, res) => res.redirect(301, '/api-docs/'));
+
 // Baseline rate limit for every API route — auth routes layer a stricter
 // limiter of their own on top of this (see routes/v1/auth.routes.js)
 const globalLimiter = rateLimit({

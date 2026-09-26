@@ -24,20 +24,30 @@ const DURATION = __ENV.DURATION || '30s';
 // Writes clear the response cache (by design), so a cache measurement needs WRITE_RATE=0.
 const WRITE_RATE = __ENV.WRITE_RATE === undefined ? 2 : Number(__ENV.WRITE_RATE);
 
+// Logins per second. Locally 1/s. Against a deployed server the default is 0,
+// because production caps /auth at 10 requests per 15 minutes per IP (a real
+// brute-force defence) — a login every second would just measure that limiter,
+// and it also uses up the budget you need to log in to the app yourself.
+const IS_LOCAL = /^https?:\/\/(localhost|127\.0\.0\.1)/.test(BASE_URL);
+const LOGIN_RATE = __ENV.LOGIN_RATE === undefined ? (IS_LOCAL ? 1 : 0) : Number(__ENV.LOGIN_RATE);
+
 const scenarios = {
     // Steady dashboard traffic — the bulk of real usage is reads.
     reads: { executor: 'constant-vus', vus: VUS, duration: DURATION, exec: 'browseDashboard' },
-    // Login is deliberately expensive (bcrypt, cost 12) — keep it low-rate.
-    logins: { executor: 'constant-arrival-rate', rate: 1, timeUnit: '1s', duration: DURATION, preAllocatedVUs: 2, exec: 'login' },
 };
+if (LOGIN_RATE > 0) {
+    // Login is deliberately expensive (bcrypt, cost 12) — keep it low-rate.
+    scenarios.logins = { executor: 'constant-arrival-rate', rate: LOGIN_RATE, timeUnit: '1s', duration: DURATION, preAllocatedVUs: 2, maxVUs: 20, exec: 'login' };
+}
 if (WRITE_RATE > 0) {
     // A trickle of writes.
-    scenarios.writes = { executor: 'constant-arrival-rate', rate: WRITE_RATE, timeUnit: '1s', duration: DURATION, preAllocatedVUs: 2, exec: 'addTransaction' };
+    scenarios.writes = { executor: 'constant-arrival-rate', rate: WRITE_RATE, timeUnit: '1s', duration: DURATION, preAllocatedVUs: 2, maxVUs: 20, exec: 'addTransaction' };
 }
 
 export const options = {
     scenarios,
     thresholds: {
+        ...(LOGIN_RATE > 0 ? { 'http_req_duration{endpoint:login}': ['p(95)<2000'] } : {}),
         http_req_failed: ['rate<0.01'],
         http_req_duration: ['p(95)<800'],
         // Listing a threshold per endpoint is also what makes k6 print per-endpoint numbers.
@@ -47,7 +57,6 @@ export const options = {
         'http_req_duration{endpoint:metrics}': ['p(95)<2000'],
         'http_req_duration{endpoint:insights}': ['p(95)<2000'],
         'http_req_duration{endpoint:forecast}': ['p(95)<2000'],
-        'http_req_duration{endpoint:login}': ['p(95)<2000'],
     },
 };
 
@@ -59,7 +68,17 @@ export function setup() {
     if (res.status !== 200) {
         throw new Error(`Setup login failed (${res.status}). Is the server running? Try: npm run loadtest:server`);
     }
-    return { token: res.json('data.accessToken') };
+    const token = res.json('data.accessToken');
+
+    // Every endpoint in this test must be reachable, and the writes need an admin.
+    // A Viewer/Analyst account would "fail" most requests with 403s, which looks
+    // like a broken server but is really the wrong account — so stop here instead.
+    const me = http.get(`${BASE_URL}/api/v1/users/me`, { headers: { Authorization: `Bearer ${token}` } });
+    const role = me.status === 200 ? me.json('data.role') : undefined;
+    if (role !== 'admin') {
+        throw new Error(`This test needs an ADMIN account, but ${EMAIL} is "${role}". Promote it (Atlas → users → role: "admin") or pass -e LOGIN_EMAIL / -e LOGIN_PASSWORD for an admin.`);
+    }
+    return { token };
 }
 
 const authed = (token, name) => ({

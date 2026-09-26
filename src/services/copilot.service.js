@@ -4,7 +4,7 @@ const anomalyService = require('./anomaly.service');
 const ApiError = require('../utils/ApiError');
 const logger = require('../config/logger');
 
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+const DEFAULT_MODEL = 'gemini-3.8-flash';
 const geminiEndpoint = (model) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
 const SYSTEM_INSTRUCTION = [
