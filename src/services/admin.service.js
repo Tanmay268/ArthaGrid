@@ -84,7 +84,7 @@ const getSystemStats = async () => {
         services: {
             mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
             postgres: !postgresConfigured() ? 'not configured' : getPool() ? 'connected' : 'unavailable',
-            copilot: process.env.GEMINI_API_KEY ? 'configured' : 'not configured',
+            copilot: process.env.AZURE_OPENAI_API_KEY && process.env.AZURE_OPENAI_ENDPOINT ? 'configured' : 'not configured',
             email: process.env.RESEND_API_KEY ? 'configured' : 'not configured',
         },
     };

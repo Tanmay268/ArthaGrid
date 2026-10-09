@@ -9,7 +9,7 @@
 | | |
 |---|---|
 | **What it is** | A personal-finance analytics platform — tracks income/expenses, analyzes/budgets/forecasts them, answers plain-language questions about your money, and has a real dashboard to look at all of it |
-| **Built with** | Node.js/Express/MongoDB backend, an optional Postgres for fast analytics history, an optional AI assistant (Google Gemini), optional weekly email reports, and a React frontend with light and dark themes that works on phones |
+| **Built with** | Node.js/Express/MongoDB backend, an optional Postgres for fast analytics history, an optional AI assistant (Azure OpenAI, GPT-5 mini), optional weekly email reports, and a React frontend with light and dark themes that works on phones |
 | **Who it's for** | Anyone needing to track money — one person or a small team |
 | **Type** | A REST API plus a React dashboard on top of it |
 | **Status** | Working backend and frontend, security-hardened, tested, documented, containerized, and designed to run entirely on free hosting |
@@ -219,7 +219,7 @@ A few choices shape how this project behaves. Here's each one in plain language:
 
 - **The AI assistant only ever sees summary numbers, never your actual transactions — and that's checked automatically, not just promised** — when you ask it a question, ArthaGrid first calculates a small set of relevant numbers itself, and only sends those numbers (never a transaction's description or merchant name) to the AI service that writes the answer in plain English. An automated test double-checks this by looking at exactly what would be sent, so this isn't just something the documentation claims.
 
-- **The AI assistant is optional, like Postgres** — if you don't set up a (free) Google Gemini API key, asking it a question returns a clear "not available" response instead of the server breaking.
+- **The AI assistant is optional, like Postgres** — if you don't set up Azure OpenAI credentials, asking it a question returns a clear "not available" response instead of the server breaking. Unlike everything else in the stack, this one piece isn't free to run — it calls Azure OpenAI's GPT-5 mini model, a paid service.
 
 - **The dashboard never has to remember your login token itself** — instead, the server hands it a special cookie that JavaScript literally can't read, and the browser quietly attaches it whenever it needs to prove who you are. This was actually corrected mid-build: the original plan used a cookie setting (`SameSite=Strict`) that would have completely broken once the dashboard and the server ended up on two different websites (which they do, on free hosting) — so it was fixed to a setting that works across sites, plus one extra safety check to make up for the protection that setting change gave up. That kind of "caught it while building, wrote down why" moment is exactly what [decisions.md](./decisions.md) is for.
 
@@ -285,7 +285,7 @@ Beyond "it works," the project has been hardened the way a real, launched produc
 - ✅ **Analytics you can trust** — the forecast, the anomaly flags, and the Financial Health Score are all built on simple, published formulas, each backed by an automated test that checks the math against known numbers.
 - ✅ **Load-tested, with the results published** — see "How well does it scale?" below.
 - ✅ **Watchable** — a token-protected metrics feed (for Grafana) and an Admin page show request counts, speed, and errors.
-- ✅ **Free-tier-ready today** — the API, the dashboard, MongoDB, the optional Postgres analytics store, the scheduled rollup job, and the AI assistant are all built and tested against free-tier hosting (Render, Vercel, Atlas, Neon, GitHub Actions, Google Gemini); actually deploying them just means creating those free accounts — see [deployment.md](./deployment.md) for the step-by-step walkthrough.
+- ✅ **Free-tier-ready today** — the API, the dashboard, MongoDB, the optional Postgres analytics store, and the scheduled rollup job are all built and tested against free-tier hosting (Render, Vercel, Atlas, Neon, GitHub Actions); actually deploying them just means creating those free accounts. The AI assistant is the one exception — it calls Azure OpenAI, a paid service — see [deployment.md](./deployment.md) for the step-by-step walkthrough.
 
 ---
 

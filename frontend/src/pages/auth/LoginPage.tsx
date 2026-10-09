@@ -8,6 +8,11 @@ import { useAuthStore } from '@/store/authStore';
 import { errorMessage } from '@/lib/utils';
 import { AuthShell } from './AuthShell';
 
+const DEMO_ACCOUNTS = [
+  { role: 'analyst', email: 'analyst@test.com', password: 'Password123' },
+  { role: 'viewer', email: 'viewer@test.com', password: 'Password123' },
+];
+
 export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -71,6 +76,33 @@ export function LoginPage() {
           <p className="text-center text-xs text-muted-foreground">First request after a quiet period can take up to a minute while the free server wakes up.</p>
         )}
       </form>
+
+      <div className="mt-6 rounded-md border border-border p-3">
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Demo accounts</p>
+        <ul className="flex flex-col gap-2">
+          {DEMO_ACCOUNTS.map((account) => (
+            <li key={account.role} className="flex items-center justify-between gap-3 text-sm">
+              <div className="min-w-0">
+                <p className="font-medium capitalize">{account.role}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {account.email} / {account.password}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setEmail(account.email);
+                  setPassword(account.password);
+                }}
+              >
+                Use
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </div>
 
       <p className="mt-6 text-center text-sm text-muted-foreground">
         New here?{' '}

@@ -27,23 +27,25 @@ For *why* these particular services were chosen (and what their free-tier limits
 
 1. Create a free account at [neon.tech](https://neon.tech) — no card required.
 2. Create a new project (the free plan gives you plenty of room for a project this size).
-3. Copy the connection string it gives you. It goes into `POSTGRES_URL`.
+3. Copy the connection string it gives you. It goes into `POSTGRES_URL`. If the Render logs print a `SECURITY WARNING: The SSL modes 'prefer', 'require'…` message, change `sslmode=require` at the end of the string to `sslmode=verify-full` — it is what the driver already does today, just written explicitly, and it silences the warning.
 4. The rollup table (`monthly_metrics`) is created automatically the first time the API starts, from `src/db/schema.sql` — nothing to run by hand. If `POSTGRES_URL` is never set at all, that's fine too — every analytics endpoint just computes live from MongoDB instead (see [decisions.md](./decisions.md) #17).
 
-## 3. Google Gemini API key (for the AI copilot)
+## 3. Azure OpenAI (for the AI copilot)
 
-1. Go to [Google AI Studio](https://aistudio.google.com/) and create a free API key — no card required.
-2. Put it in `GEMINI_API_KEY`.
-3. Know what you're agreeing to: on the free tier, Google may use what you send it to improve their products. ArthaGrid only ever sends pre-computed summary numbers to Gemini, never raw transactions — but it's still information leaving the system, and that's a deliberate, disclosed trade-off of using a free AI service (see [decisions.md](./decisions.md) #19).
+1. In the [Azure AI Foundry](https://ai.azure.com/) portal, create (or reuse) an Azure OpenAI resource and deploy the `gpt-5-mini` model, giving the deployment a name (the default ArthaGrid expects is `gpt-5-mini`).
+2. From the resource's **Keys and Endpoint** page, put the key into `AZURE_OPENAI_API_KEY` and the endpoint URL (e.g. `https://your-resource.openai.azure.com`) into `AZURE_OPENAI_ENDPOINT`. Set `AZURE_OPENAI_DEPLOYMENT` to whatever you named the deployment if it isn't `gpt-5-mini`.
+3. ArthaGrid only ever sends pre-computed summary numbers to Azure OpenAI, never raw transactions — see [decisions.md](./decisions.md) #19 for why that boundary is deliberate.
 
 ## 4. Render (the API itself)
 
 1. Create a free account at [render.com](https://render.com).
 2. Create a new **Web Service**, pointing at this GitHub repo.
+   - **Choose the region closest to your Atlas cluster (and your Neon project).** This matters more than anything else for speed: every request makes several round trips to the database, and a cross-continent round trip costs roughly 200+ ms *each*. Render can't change a service's region after it's created, so pick it now. Check where your cluster lives in Atlas (Cluster → the region shown, e.g. AWS Mumbai) and pick Render's nearest region (e.g. Singapore for India).
 3. Build command: `npm ci`. Start command: `npm start`.
-4. Add every variable from `.env.example` as an environment variable on the service (the repo's `render.yaml` Blueprint lists them all and marks the secrets, and `.env.render.example` is a production-flavored template — you can use either the Blueprint or the manual steps) (`MONGO_URI`, `JWT_SECRET`, `POSTGRES_URL`, `GEMINI_API_KEY`, `CRON_SECRET` — make this one up, it's just a shared password between GitHub Actions and your API — and `CORS_ORIGIN`, set to your Vercel URL once you have it from step 5).
-5. Deploy. Note the URL Render gives you (something like `https://arthagrid.onrender.com`) — the frontend and the scheduled job both need it.
-6. **Know the trade-off:** a free Render web service falls asleep after 15 minutes with no traffic, and takes about a minute to wake back up on the next request. That's normal, not a bug — nothing to do about it for free.
+4. Add every variable from `.env.example` as an environment variable on the service (the repo's `render.yaml` Blueprint lists them all and marks the secrets, and `.env.render.example` is a production-flavored template — you can use either the Blueprint or the manual steps) (`MONGO_URI`, `JWT_SECRET`, `POSTGRES_URL`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `CRON_SECRET` — make this one up, it's just a shared password between GitHub Actions and your API — and `CORS_ORIGIN`, set to your Vercel URL once you have it from step 5).
+5. Under **Settings → Health Check Path** enter `/health`. (An older service may still probe a path that no longer exists, such as `/api/docs`.)
+6. Deploy. Note the URL Render gives you (something like `https://arthagrid.onrender.com`) — the frontend and the scheduled job both need it.
+7. **Know the trade-off:** a free Render web service falls asleep after 15 minutes with no traffic, and takes about a minute to wake back up on the next request. That's normal, not a bug — nothing to do about it for free.
 
 ## 5. Vercel (the frontend)
 
@@ -91,6 +93,7 @@ Set `METRICS_TOKEN` on Render and follow [observability.md](./observability.md).
 
 ## If something's free-tier-broken, not actually broken
 
+- **Every page is slow even when the server is awake (a second or more per request).** Check that Render and Atlas are in the same or a neighbouring region. Per-request time in the Render logs that comes in near-identical multiples of one number (say ~235 ms, ~470 ms, ~700 ms) is the signature of a fixed cost per database round trip — see [load-testing.md](./load-testing.md) section 3d.
 - **First page load is really slow.** That's Render waking up from sleep. Reload after a minute.
 - **Dashboard says "no data yet" for analytics that need history.** The nightly rollup hasn't run yet — trigger it manually from GitHub Actions once, or wait for the schedule.
 - **MongoDB Atlas cluster seems to have disappeared.** It auto-pauses after 30 days of zero connections. Resume it from the Atlas dashboard — no data is lost.

@@ -7,7 +7,7 @@ const { authorize } = require('../../middleware/authorize');
 const validate = require('../../middleware/validate');
 const { askSchema } = require('../../validators/copilot.validator');
 
-// Tighter than the global limiter — bounds both Gemini's free-tier rate
+// Tighter than the global limiter — bounds both Azure OpenAI's rate
 // limits and the cost of someone hammering an endpoint that calls out to a
 // third-party API on every request.
 const copilotLimiter = rateLimit({

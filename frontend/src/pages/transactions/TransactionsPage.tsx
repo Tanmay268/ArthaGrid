@@ -125,6 +125,7 @@ export function TransactionsPage() {
                         {t.type === 'income' ? '+' : '−'}
                         {formatCurrency(t.amount)}
                       </span>
+                      {t.balanceAfter !== undefined && <span className="tabular text-xs text-muted-foreground">Bal {formatCurrency(t.balanceAfter)}</span>}
                       {isAdmin && <RowActions onEdit={() => openEdit(t)} onDelete={() => setDeleting(t)} />}
                     </div>
                   </li>
@@ -140,6 +141,7 @@ export function TransactionsPage() {
                       <TableHead>Merchant</TableHead>
                       <TableHead>Description</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
+                      <TableHead className="text-right">Balance</TableHead>
                       {isAdmin && <TableHead className="w-20" />}
                     </TableRow>
                   </TableHeader>
@@ -153,6 +155,9 @@ export function TransactionsPage() {
                         <TableCell className={cn('tabular text-right font-medium', t.type === 'income' && 'text-success')}>
                           {t.type === 'income' ? '+' : '−'}
                           {formatCurrency(t.amount)}
+                        </TableCell>
+                        <TableCell className={cn('tabular text-right text-muted-foreground', t.balanceAfter !== undefined && t.balanceAfter < 0 && 'text-destructive')}>
+                          {t.balanceAfter !== undefined ? formatCurrency(t.balanceAfter) : '—'}
                         </TableCell>
                         {isAdmin && (
                           <TableCell className="text-right">

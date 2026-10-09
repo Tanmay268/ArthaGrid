@@ -30,7 +30,13 @@ services:
       # Optional — each feature switches on only when its variable is set.
       - key: POSTGRES_URL
         sync: false
-      - key: GEMINI_API_KEY
+      - key: AZURE_OPENAI_API_KEY
+        sync: false
+      - key: AZURE_OPENAI_ENDPOINT
+        sync: false
+      - key: AZURE_OPENAI_DEPLOYMENT
+        sync: false
+      - key: AZURE_OPENAI_API_VERSION
         sync: false
       - key: RESEND_API_KEY
         sync: false

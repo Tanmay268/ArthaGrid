@@ -517,13 +517,13 @@ paths:
       tags: [Copilot]
       summary: Ask a plain-language question about your finances
       description: >
-        Answered by Google Gemini (free tier), grounded ONLY in a small,
+        Answered by Azure OpenAI (GPT-5 mini), grounded ONLY in a small,
         explicitly allow-listed bundle of pre-computed aggregate numbers
         (totals, savings rate, top category changes, anomaly counts) that
         the response echoes back as `aggregates` — raw transaction
         descriptions or merchant names are never sent. Rate-limited to 20
-        requests/hour, tighter than other endpoints, to respect Gemini's
-        free-tier limits.
+        requests/hour, tighter than other endpoints, to bound both Azure
+        OpenAI's rate limits and the cost of every call.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -539,7 +539,7 @@ paths:
         '400': { description: Validation failed (question missing or wrong length) }
         '403': { description: Role does not have read:analytics }
         '429': { description: Copilot rate limit exceeded }
-        '503': { description: "AI copilot not configured (missing GEMINI_API_KEY) or Gemini temporarily unavailable" }
+        '503': { description: "AI copilot not configured (missing AZURE_OPENAI_API_KEY/AZURE_OPENAI_ENDPOINT) or Azure OpenAI temporarily unavailable" }
 
   /health:
     get:

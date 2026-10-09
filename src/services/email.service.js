@@ -6,7 +6,7 @@ const logger = require('../config/logger');
 // library would work locally and silently fail once deployed. HTTPS always
 // gets through. See docs/decisions.md #24.
 //
-// Optional like Postgres and Gemini: without RESEND_API_KEY the reporting
+// Optional like Postgres and Azure OpenAI: without RESEND_API_KEY the reporting
 // job reports "skipped" instead of failing.
 
 const RESEND_URL = 'https://api.resend.com/emails';

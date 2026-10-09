@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
+import { AreaChart, Area, Legend, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
 import { ArrowDownRight, ArrowUpRight, PiggyBank, Receipt, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +13,13 @@ import { useBudgets } from '@/api/budgets';
 import { useAuthStore } from '@/store/authStore';
 import { axisTick, CHART_COLORS, compactInr, gridStroke, tooltipStyle } from '@/lib/chart';
 import { cn, formatCurrency, humanize } from '@/lib/utils';
+
+type Series = 'income' | 'expenses' | 'net';
+const SERIES: { key: Series; label: string; color: string }[] = [
+  { key: 'income', label: 'Income', color: 'hsl(var(--success))' },
+  { key: 'expenses', label: 'Expenses', color: 'hsl(var(--destructive))' },
+  { key: 'net', label: 'Net', color: 'hsl(var(--foreground))' },
+];
 
 export function OverviewPage() {
   const role = useAuthStore((s) => s.user?.role);
@@ -26,6 +34,10 @@ function AnalystOverview() {
   const trends = useDashboardTrends('monthly');
   const byCategory = useDashboardByCategory();
   const recent = useRecentTransactions(6);
+  const [visible, setVisible] = useState<Series[]>(['income', 'expenses', 'net']);
+  // Always keep at least one series on so the chart never goes blank.
+  const toggleSeries = (key: Series) =>
+    setVisible((v) => (v.includes(key) ? (v.length > 1 ? v.filter((k) => k !== key) : v) : [...v, key]));
 
   const s = summary.data;
   const pieData = (byCategory.data?.expense ?? []).slice(0, 6).map((c) => ({ name: humanize(c.category), value: c.total }));
@@ -51,7 +63,26 @@ function AnalystOverview() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Income vs. expenses, by month</CardTitle>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle>Income, expenses &amp; net, by month</CardTitle>
+              <div className="flex gap-1.5" role="group" aria-label="Chart series">
+                {SERIES.map((x) => {
+                  const on = visible.includes(x.key);
+                  return (
+                    <button
+                      key={x.key}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => toggleSeries(x.key)}
+                      className={cn('flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors', on ? 'border-foreground/30 bg-muted' : 'border-border text-muted-foreground')}
+                    >
+                      <span className="h-2 w-2 rounded-full" style={{ background: x.color, opacity: on ? 1 : 0.3 }} />
+                      {x.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {trends.isLoading && <Skeleton className="h-64 w-full" />}
@@ -74,8 +105,10 @@ function AnalystOverview() {
                   <XAxis dataKey="label" tick={axisTick} tickLine={false} axisLine={false} minTickGap={16} />
                   <YAxis tick={axisTick} tickLine={false} axisLine={false} width={44} tickFormatter={compactInr} />
                   <Tooltip {...tooltipStyle} formatter={(v: number) => formatCurrency(v)} />
-                  <Area type="monotone" dataKey="income" name="Income" stroke="hsl(var(--success))" fill="url(#incomeFill)" strokeWidth={2} />
-                  <Area type="monotone" dataKey="expenses" name="Expenses" stroke="hsl(var(--destructive))" fill="url(#expenseFill)" strokeWidth={2} />
+                  <Legend iconType="plainline" wrapperStyle={{ fontSize: 12 }} />
+                  {visible.includes('income') && <Area type="monotone" dataKey="income" name="Income" stroke="hsl(var(--success))" fill="url(#incomeFill)" strokeWidth={2} />}
+                  {visible.includes('expenses') && <Area type="monotone" dataKey="expenses" name="Expenses" stroke="hsl(var(--destructive))" fill="url(#expenseFill)" strokeWidth={2} />}
+                  {visible.includes('net') && <Area type="monotone" dataKey="net" name="Net" stroke="hsl(var(--foreground))" fill="none" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 2 }} />}
                 </AreaChart>
               </ResponsiveContainer>
             )}

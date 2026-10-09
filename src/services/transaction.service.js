@@ -19,6 +19,27 @@ const createTransaction = async (data, userId) => {
   return { transaction, unusual };
 };
 
+// ─── RUNNING BALANCE ─────────────────────────────────────────────────────────
+
+// Balance right after each transaction, over the whole ledger in chronological
+// order (date, then _id as a stable tiebreak). Independent of the list's
+// filters/sort, so a filtered view still shows the true balance at that point.
+const getRunningBalances = async () => {
+  const key = 'txn:running-balances';
+  const hit = cache.get(key);
+  if (hit) return hit;
+
+  const all = await Transaction.find().select('type amount date').sort({ date: 1, _id: 1 }).lean();
+  const balances = new Map();
+  let running = 0;
+  for (const t of all) {
+    running += t.type === 'income' ? t.amount : -t.amount;
+    balances.set(String(t._id), Math.round(running * 100) / 100);
+  }
+  cache.set(key, balances);
+  return balances;
+};
+
 // ─── GET ALL (with filtering, sorting, pagination) ───────────────────────────
 
 const getTransactions = async (filters) => {
@@ -50,7 +71,7 @@ const getTransactions = async (filters) => {
   const skip = (page - 1) * limit;
 
   // Run count and data fetch in parallel — faster than sequential
-  const [total, transactions] = await Promise.all([
+  const [total, transactions, balances] = await Promise.all([
     // countDocuments doesn't go through the pre(/^find/) soft-delete hook,
     // so the filter has to be applied explicitly or deleted rows inflate `total`.
     Transaction.countDocuments({ ...query, isDeleted: { $ne: true } }),
@@ -59,10 +80,11 @@ const getTransactions = async (filters) => {
       .sort(sort)
       .skip(skip)
       .limit(limit),
+    getRunningBalances(),
   ]);
 
   return {
-    transactions,
+    transactions: transactions.map((t) => ({ ...t.toJSON(), balanceAfter: balances.get(String(t._id)) })),
     pagination: {
       total,
       page,

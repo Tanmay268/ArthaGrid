@@ -50,7 +50,7 @@ The admin can add and edit data and sees the Admin page; the analyst also gets a
 - **Insights engine** — plain-language, rule-based observations generated from your own data, computed live per request
 - **Postgres analytics rollups** *(optional)* — a second free database (Neon) that the forecast endpoint reads from once populated, keeping multi-month queries fast as data grows; entirely optional — without it configured, everything computes live from MongoDB exactly as before
 - **Scheduled rollup job** — a GitHub Actions workflow standing in for a background worker (no free host provides one for free), calling a shared-secret-protected internal endpoint on a daily schedule
-- **AI Financial Copilot** *(optional)* — ask questions like "why did my expenses increase?", answered by Google Gemini's free tier from a small, explicitly allow-listed bundle of pre-computed aggregate numbers — a transaction's raw description/merchant text is never sent, which is asserted by an automated test, not just documented. Without a Gemini key configured, the endpoint returns 503 rather than failing to start
+- **AI Financial Copilot** *(optional)* — ask questions like "why did my expenses increase?", answered by Azure OpenAI (GPT-5 mini) from a small, explicitly allow-listed bundle of pre-computed aggregate numbers — a transaction's raw description/merchant text is never sent, which is asserted by an automated test, not just documented. Without Azure OpenAI credentials configured, the endpoint returns 503 rather than failing to start
 - **Auto-categorization** — suggests a category from a transaction's description; a small on-server classifier (no third-party call) that says "not sure" instead of guessing. Accuracy numbers, good and bad, are in [docs/decisions.md](docs/decisions.md) #23
 - **Weekly email report** *(optional)* — opt-in from Settings, sent by a scheduled GitHub Actions job through Resend's free HTTPS API
 - **Admin dashboard** and **Prometheus `/metrics`** — platform stats and latency numbers for admins; a token-protected metrics endpoint for Grafana ([docs/observability.md](docs/observability.md))
@@ -64,7 +64,7 @@ See [docs/context.md](docs/context.md) for the full project rationale, [docs/arc
 
 ## Tech stack
 
-Backend: Node.js, Express, MongoDB (Mongoose), Postgres (`pg`, optional — analytics rollups), Google Gemini API (optional — AI copilot, called via plain `fetch`, no SDK), JWT, Joi, Pino, Jest + Supertest. Analytics/forecasting/anomaly-detection math is hand-rolled in plain JS (`src/utils/stats.js`) rather than an added dependency.
+Backend: Node.js, Express, MongoDB (Mongoose), Postgres (`pg`, optional — analytics rollups), Azure OpenAI (optional — AI copilot, GPT-5 mini, called via plain `fetch`, no SDK), JWT, Joi, Pino, Jest + Supertest. Analytics/forecasting/anomaly-detection math is hand-rolled in plain JS (`src/utils/stats.js`) rather than an added dependency.
 Metrics & load testing: `prom-client`, k6.
 Frontend: React, TypeScript, Vite, Tailwind, hand-authored shadcn-style UI primitives, Recharts, TanStack Query, React Router, Zustand.
 
@@ -95,8 +95,10 @@ Fill in `.env`:
 | `LOG_LEVEL` | Pino log level (e.g. `debug`, `info`) |
 | `POSTGRES_URL` *(optional)* | Postgres connection string, for analytics rollups (e.g. from Neon). Leave unset and analytics just computes live from MongoDB instead |
 | `CRON_SECRET` | Shared secret the scheduled rollup job (GitHub Actions) must send (as `X-Cron-Secret`) to trigger `POST /internal/jobs/rollup`. Without it set, that endpoint rejects every request |
-| `GEMINI_API_KEY` *(optional)* | Google Gemini API key, for the AI Financial Copilot. Leave unset and `POST /copilot/ask` returns `503` instead |
-| `GEMINI_MODEL` *(optional)* | Which Gemini model to call — defaults to `gemini-3.8-flash` if unset |
+| `AZURE_OPENAI_API_KEY` *(optional)* | Azure OpenAI API key, for the AI Financial Copilot. Leave unset (with the endpoint) and `POST /copilot/ask` returns `503` instead |
+| `AZURE_OPENAI_ENDPOINT` *(optional)* | Your Azure OpenAI resource endpoint, e.g. `https://your-resource.openai.azure.com` |
+| `AZURE_OPENAI_DEPLOYMENT` *(optional)* | Which deployment to call — defaults to `gpt-5-mini` if unset |
+| `AZURE_OPENAI_API_VERSION` *(optional)* | Azure OpenAI REST API version — defaults to `2025-04-01-preview` if unset |
 | `RESEND_API_KEY` *(optional)* | Resend API key for the weekly email report. Unset = the weekly job reports "skipped" |
 | `REPORT_FROM_EMAIL` *(optional)* | Sender address for the report (defaults to Resend's sandbox sender) |
 | `REPORT_ALLOWED_RECIPIENTS` *(optional)* | Comma-separated list; when set, only these addresses are ever emailed (registration doesn't verify email ownership) |
@@ -223,7 +225,7 @@ See [docs/architecture.md](docs/architecture.md) for the frontend's internal lay
 
 ## Deployment
 
-ArthaGrid is **designed** to run entirely on free-tier hosting, and every piece is code-ready and tested: Render (API), MongoDB Atlas, Neon Postgres, GitHub Actions (scheduled rollup and weekly report), Google Gemini (copilot), Resend (optional email), and Vercel (frontend). See [docs/deployment.md](docs/deployment.md) for the step-by-step guide to actually creating those accounts, and [docs/architecture.md](docs/architecture.md#deployment-free-tier) for the reasoning and known free-tier trade-offs (cold starts, rate limits, etc.).
+ArthaGrid is **designed** to run on free-tier hosting for everything except the AI copilot, and every piece is code-ready and tested: Render (API), MongoDB Atlas, Neon Postgres, GitHub Actions (scheduled rollup and weekly report), Azure OpenAI (copilot, pay-as-you-go), Resend (optional email), and Vercel (frontend). See [docs/deployment.md](docs/deployment.md) for the step-by-step guide to actually creating those accounts, and [docs/architecture.md](docs/architecture.md#deployment-free-tier) for the reasoning and known free-tier trade-offs (cold starts, rate limits, etc.).
 
 ## Assumptions and known limits
 

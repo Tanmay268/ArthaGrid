@@ -188,15 +188,15 @@ Refresh tokens are also **rotated**: each `/auth/refresh` call revokes the token
 
 ---
 
-### 19. AI Financial Copilot built on Google Gemini's free API tier, aggregates only
+### 19. AI Financial Copilot built on Azure OpenAI (GPT-5 mini), aggregates only
 
-**Decision:** The natural-language "ask ArthaGrid" feature calls Google's Gemini API (free tier), and only ever sends it pre-computed aggregate figures the analytics engine already produced (e.g. "Food spending is up 18% this month, +₹2,340") — never raw transaction descriptions, merchant names, or account details.
+**Decision:** The natural-language "ask ArthaGrid" feature calls Azure OpenAI's chat completions API against a `gpt-5-mini` deployment, and only ever sends it pre-computed aggregate figures the analytics engine already produced (e.g. "Food spending is up 18% this month, +₹2,340") — never raw transaction descriptions, merchant names, or account details.
 
-**Why:** Gemini's free tier is, as of when this was researched, the only mainstream LLM API with a genuinely free, non-expiring quota suitable for a project with no operating budget. Restricting what's sent to pre-aggregated numbers bounds the exposure: even in the worst case, what leaves the server is a handful of already-derived statistics, not a user's actual spending history.
+**Why:** Restricting what's sent to pre-aggregated numbers bounds the exposure: even in the worst case, what leaves the server is a handful of already-derived statistics, not a user's actual spending history. Azure OpenAI also keeps the copilot on the same cloud/compliance boundary as the rest of an org's infrastructure, rather than a separate consumer AI vendor.
 
-**Trade-off:** Google's free tier terms allow inputs to be used to improve their products — this is a real, disclosed trade-off of using a free LLM API for something touching financial data, accepted deliberately rather than glossed over. There's also no real intent-classification step in this version: every question sends the same fixed bundle of aggregates regardless of what was actually asked, which works for the "why did my spending change" style questions this was built for but won't generalize to arbitrary questions without further work.
+**Trade-off:** There's no real intent-classification step in this version: every question sends the same fixed bundle of aggregates regardless of what was actually asked, which works for the "why did my spending change" style questions this was built for but won't generalize to arbitrary questions without further work.
 
-Like Postgres (decision #17), this is optional at the code level: without `GEMINI_API_KEY` configured, `POST /api/v1/copilot/ask` returns a `503` rather than the server failing to start or the endpoint crashing. And the "never raw transaction data" promise isn't just a comment — `tests/copilot.test.js` mocks the Gemini call and asserts a seeded transaction's `merchant`/`description` text never appears in the request actually sent.
+Like Postgres (decision #17), this is optional at the code level: without `AZURE_OPENAI_API_KEY`/`AZURE_OPENAI_ENDPOINT` configured, `POST /api/v1/copilot/ask` returns a `503` rather than the server failing to start or the endpoint crashing. And the "never raw transaction data" promise isn't just a comment — `tests/copilot.test.js` mocks the Azure OpenAI call and asserts a seeded transaction's `merchant`/`description` text never appears in the request actually sent.
 
 ---
 
@@ -238,7 +238,7 @@ Like Postgres (decision #17), this is optional at the code level: without `GEMIN
 
 **Decision:** `POST /api/v1/transactions/suggest-category` suggests a category from a description/merchant using a hand-written Naive Bayes classifier (words + character trigrams) inside the API process. It learns from a small built-in seed list plus the ledger's own already-categorized transactions (weighted higher), and **abstains** — returns no suggestion — when it isn't confident enough. It only ever *suggests*; the user still picks the category.
 
-**Why:** The earlier roadmap deferred this because a new account has no history to learn from. The seed list solves the cold start, and the ledger data improves it over time. Doing it in-process keeps it free, instant, private (nothing is sent to a third party — unlike the copilot, decision #19), and dependency-free. An LLM call per keystroke would burn the Gemini free quota and leak descriptions.
+**Why:** The earlier roadmap deferred this because a new account has no history to learn from. The seed list solves the cold start, and the ledger data improves it over time. Doing it in-process keeps it free, instant, private (nothing is sent to a third party — unlike the copilot, decision #19), and dependency-free. An LLM call per keystroke would burn through the Azure OpenAI budget and leak descriptions.
 
 **Trade-off / honesty about accuracy:** on the 191 built-in seed phrases, 5-fold cross-validation gave **49.2%** accuracy (94/191) — a pessimistic number, because each fold removes whole merchants the model then has never seen. On a separate hand-written held-out set of 37 realistic descriptions (`tests/fixtures/categorizerHoldout.js`), accuracy is **94.6%** (35/37) — but that set is small, and written by the same person who wrote the seed list, so it is optimistic. Both numbers are real; the truth is somewhere in between and depends on how familiar the merchants are. The "score" it returns is a relative ranking, **not a calibrated probability**, and the docs/UI don't call it one. `npm run eval:categorizer` reproduces both numbers. It will not understand a merchant it has never seen and will say so rather than guess.
 
@@ -246,7 +246,7 @@ Like Postgres (decision #17), this is optional at the code level: without `GEMIN
 
 ### 24. Weekly email reports sent through an HTTPS email API (Resend), not SMTP
 
-**Decision:** Users can opt in (Settings → "Weekly email report"). A scheduled GitHub Actions workflow (`weekly-report.yml`) calls `POST /api/v1/internal/jobs/weekly-report` with the shared `X-Cron-Secret`; the API sends each opted-in user the same summary email via Resend's HTTPS API using plain `fetch`, no SDK. Optional like Postgres and Gemini: with `RESEND_API_KEY` unset, the job reports "skipped" and the workflow still succeeds.
+**Decision:** Users can opt in (Settings → "Weekly email report"). A scheduled GitHub Actions workflow (`weekly-report.yml`) calls `POST /api/v1/internal/jobs/weekly-report` with the shared `X-Cron-Secret`; the API sends each opted-in user the same summary email via Resend's HTTPS API using plain `fetch`, no SDK. Optional like Postgres and Azure OpenAI: with `RESEND_API_KEY` unset, the job reports "skipped" and the workflow still succeeds.
 
 **Why HTTPS instead of SMTP (nodemailer):** Render's free tier blocks outbound SMTP ports (25/465/587), so an SMTP library would work on a laptop and silently fail in production. Sending over HTTPS (port 443) works everywhere.
 

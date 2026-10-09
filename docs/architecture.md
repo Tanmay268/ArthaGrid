@@ -20,7 +20,7 @@ This document explains how ArthaGrid is built, in two levels of detail. Read the
 | Containerization | Docker + Docker Compose | Consistent local setup and deployment |
 | Analytics store *(optional)* | PostgreSQL (via Neon, `pg` driver, no ORM) | A second, free database holding only one pre-computed rollup table; every endpoint works without it — see [decisions.md](./decisions.md) #17 |
 | Scheduled jobs | GitHub Actions scheduled workflow | Stands in for a background worker, which no free hosting tier provides — see [decisions.md](./decisions.md) #18 |
-| AI copilot *(optional)* | Google Gemini API (free tier, no SDK — plain `fetch`) | Plain-language Q&A over pre-computed aggregate numbers only — see [decisions.md](./decisions.md) #19 |
+| AI copilot *(optional)* | Azure OpenAI, GPT-5 mini (no SDK — plain `fetch`) | Plain-language Q&A over pre-computed aggregate numbers only — see [decisions.md](./decisions.md) #19 |
 | Response cache | In-process TTL cache + request coalescing (`src/utils/cache.js`) | Makes the heavy analytics endpoints ~3.7× faster under load with no extra service — see [decisions.md](./decisions.md) #22 and [load-testing.md](./load-testing.md) |
 | Auto-categorization | Naive Bayes classifier in plain JS (`src/services/categorize.service.js`) | Suggests a category from a description; no ML dependency, nothing leaves the server — see [decisions.md](./decisions.md) #23 |
 | Email reports *(optional)* | Resend HTTPS API (plain `fetch`) | Free hosting blocks SMTP ports, so mail goes over HTTPS — see [decisions.md](./decisions.md) #24 |
@@ -220,7 +220,7 @@ sequenceDiagram
 
 Every part of this diagram is **built and live** — see [upgrades.md](./upgrades.md) for the full list.
 
-The analytics/budgets/insights features live as new modules inside the same Express service — there is no separate "Analytics Service" or "ML Service" process (see [decisions.md](./decisions.md) #20). Two things sit outside the normal request/response flow: the Postgres rollup job, triggered on a schedule rather than by a client request, and the AI copilot's call out to Gemini, triggered by a client request but talking to a third party instead of a database.
+The analytics/budgets/insights features live as new modules inside the same Express service — there is no separate "Analytics Service" or "ML Service" process (see [decisions.md](./decisions.md) #20). Two things sit outside the normal request/response flow: the Postgres rollup job, triggered on a schedule rather than by a client request, and the AI copilot's call out to Azure OpenAI, triggered by a client request but talking to a third party instead of a database.
 
 ```mermaid
 flowchart TD
@@ -236,11 +236,11 @@ flowchart TD
         RollupSvc -->|writes monthly_metrics| Postgres[(Postgres\nmonthly_metrics)]
     end
 
-    subgraph CopilotFlow["AI copilot — BUILT (Gemini key optional)"]
+    subgraph CopilotFlow["AI copilot — BUILT (Azure OpenAI credentials optional)"]
         Ask["POST /copilot/ask"] --> Bundle["Build a fixed, allow-listed bundle of\naggregate numbers (no raw transactions)"]
         Bundle --> Analytics
-        Bundle --> Gemini["Google Gemini API\n(free tier)"]
-        Gemini --> Answer["Natural-language answer\ngrounded only in the bundle"]
+        Bundle --> AzureOpenAI["Azure OpenAI API\n(GPT-5 mini)"]
+        AzureOpenAI --> Answer["Natural-language answer\ngrounded only in the bundle"]
     end
 
     Analytics -.->|"forecast history prefers\nPostgres once populated"| Postgres
@@ -249,7 +249,7 @@ flowchart TD
 **In plain words:**
 - **Built:** every analytics/budgets/insights endpoint computes its answer live from MongoDB on every request, the same way `dashboard.service.js` already did — this is simple and fast enough at this data scale, and needs no extra infrastructure.
 - **Built, optional:** a separate, scheduled path exists for the one number that's worth pre-computing — monthly income/expense/net totals, which the forecast endpoint reads repeatedly. Once a day, a GitHub Actions workflow calls a protected internal endpoint that reads from MongoDB and rebuilds `monthly_metrics` in Postgres. Nothing in this path runs continuously — it's an on/off script triggered by a timer, not a background worker. Without `POSTGRES_URL` set, this path simply never activates and the forecast endpoint keeps computing its history live from MongoDB, exactly as it did before this existed.
-- **Built, optional:** the AI copilot never touches MongoDB or Postgres directly from Gemini's side. The server first computes a small, explicitly allow-listed bundle of aggregate numbers using the same analytics services as everything else, and only that bundle (plus the user's question) is sent to Gemini — verified by a test that mocks the call and inspects the exact request body. Without `GEMINI_API_KEY` set, `POST /copilot/ask` returns `503` instead of the server failing to start.
+- **Built, optional:** the AI copilot never touches MongoDB or Postgres directly from Azure OpenAI's side. The server first computes a small, explicitly allow-listed bundle of aggregate numbers using the same analytics services as everything else, and only that bundle (plus the user's question) is sent to Azure OpenAI — verified by a test that mocks the call and inspects the exact request body. Without `AZURE_OPENAI_API_KEY`/`AZURE_OPENAI_ENDPOINT` set, `POST /copilot/ask` returns `503` instead of the server failing to start.
 
 ### Caching, reports and metrics (Round 2)
 
@@ -373,7 +373,7 @@ This table is the actual, live API — it matches [openapi.yaml](./openapi.yaml)
 | GET | `/api/v1/analytics/weekly-report` | analyst, admin | The weekly summary that the email report is built from |
 | POST | `/api/v1/transactions/suggest-category` | admin (same gate as creating a transaction) | Suggest a category from a description/merchant; returns no suggestion when unsure |
 | GET | `/api/v1/admin/stats` | admin | Platform stats: users, transaction volume, popular categories, request/latency numbers, service status |
-| POST | `/api/v1/copilot/ask` | analyst, admin | Ask a plain-language question, answered from aggregate data via Gemini — 20 requests/hour |
+| POST | `/api/v1/copilot/ask` | analyst, admin | Ask a plain-language question, answered from aggregate data via Azure OpenAI — 20 requests/hour |
 | GET | `/` | anyone | Tiny JSON pointer to the docs and health check |
 | GET | `/health` | anyone | Basic uptime check |
 | GET | `/metrics` | bearer `METRICS_TOKEN` (401 if unset) | Prometheus-format metrics for Grafana Cloud / Prometheus |
@@ -392,7 +392,7 @@ Every endpoint from the original ArthaGrid 2.0 plan is now built — see [upgrad
 
 ## Deployment (free tier)
 
-ArthaGrid is **designed** to run entirely on free tiers, spread across five services — and as of Stage D, all five are code-ready: MongoDB Atlas, Neon Postgres, Render, the GitHub Actions rollup job, the Gemini-based copilot, and now the `frontend/` app for Vercel. The connection logic, schema, workflow file, copilot endpoint, and frontend all exist and are tested — actually running on all five still means creating those free accounts and setting the matching environment variables, which is what [deployment.md](./deployment.md) walks through step by step. Here's the shape of the deployment:
+ArthaGrid is **designed** to run on free tiers for every piece except the AI copilot, spread across five services — and as of Stage D, all five are code-ready: MongoDB Atlas, Neon Postgres, Render, the GitHub Actions rollup job, the Azure-OpenAI-based copilot, and now the `frontend/` app for Vercel. The connection logic, schema, workflow file, copilot endpoint, and frontend all exist and are tested — actually running on all five still means creating those accounts and setting the matching environment variables, which is what [deployment.md](./deployment.md) walks through step by step. Here's the shape of the deployment:
 
 ```mermaid
 flowchart LR
@@ -400,21 +400,21 @@ flowchart LR
     Vercel -->|HTTPS API calls| Render["ArthaGrid API\n(Render free web service)"]
     Render --> Atlas[("MongoDB Atlas\nfree M0 cluster")]
     Render --> Neon[("Postgres\nNeon free tier")]
-    Render --> GeminiAPI["Google Gemini API\n(free tier)"]
+    Render --> AzureOpenAIAPI["Azure OpenAI API\n(GPT-5 mini, pay-as-you-go)"]
     Render --> Resend["Resend email API\n(free tier, optional)"]
     GHA["GitHub Actions\nscheduled workflows"] -->|"daily rollup + weekly report,\nwith shared secret"| Render
     Grafana["Grafana Cloud\n(free, optional)"] -->|"scrapes /metrics"| Render
 ```
 
-Each piece is free on its own, but each also comes with a free-tier limitation worth knowing about rather than being surprised by:
+Every piece but the copilot is free on its own, and each also comes with a limitation worth knowing about rather than being surprised by:
 
-| Service | Free-tier limitation | What it means in practice |
+| Service | Limitation | What it means in practice |
 |---|---|---|
 | Render (API hosting) | Sleeps after 15 minutes idle, ~1 minute cold start | The first request after a quiet period (e.g. first thing in the morning) will be slow. Nothing to fix for free — just expected. |
 | MongoDB Atlas M0 | 512MB storage, ~100 operations/second, auto-pauses after 30 days with zero connections | Fine at personal/small-team scale. The daily rollup job also happens to keep it from ever going fully idle. |
 | Neon Postgres | 0.5GB storage, 100 compute-hours/month, scales to zero | Only ever holds small, pre-aggregated rollup tables, so the storage limit isn't a real constraint. |
 | GitHub Actions | 2,000 free minutes/month on a private repo (unlimited on a public repo) | The rollup job runs once a day and takes seconds — nowhere near the limit. |
-| Google Gemini API | Free tier is Flash-model-only, rate-limited, and inputs may be used to improve Google's products | Mitigated by only ever sending pre-computed aggregate numbers to it, never raw transactions (see [decisions.md](./decisions.md) #19). |
+| Azure OpenAI API | Pay-as-you-go, not free tier; billed per token | Mitigated by only ever sending pre-computed aggregate numbers to it, never raw transactions (see [decisions.md](./decisions.md) #19), and the endpoint's own 20/hour rate limit bounds the worst case. |
 | Resend (email) | Free tier has a monthly send cap; until you verify a domain it can only send from its sandbox address to the account owner | Fine for a demo. Set `REPORT_FROM_EMAIL` once you have a verified domain. |
 | Grafana Cloud (metrics) | Free tier has retention and series limits | Route labels are normalized so ArthaGrid can't blow the series budget — see [observability.md](./observability.md). |
 | Vercel (frontend hosting) | Hobby plan is personal/non-commercial use only | Fine for a portfolio project; would need a paid plan if this were ever monetized. |

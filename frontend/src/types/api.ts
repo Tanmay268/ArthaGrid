@@ -28,6 +28,8 @@ export interface Transaction {
   merchant?: string | null;
   date: string;
   description?: string;
+  /** Running balance (all income − all expenses) right after this transaction, in date order. */
+  balanceAfter?: number;
   createdBy?: { _id: string; name: string; email: string; role: Role } | string;
   updatedBy?: string | null;
   createdAt?: string;

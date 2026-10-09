@@ -157,6 +157,17 @@ p95 by endpoint: forecast 0.70 s · metrics 1.25 s · summary 1.41 s · budgets 
 How to read it, honestly:
 
 - **The 5 failures were dropped connections, not error responses.** k6 reported `An existing connection was forcibly closed by the remote host` for five requests, all within about a second of each other. No HTTP error status came back. **We do not know the cause.** Candidates: the free instance or Render's proxy resetting connections, or a brief instance restart. The Render dashboard's Logs and Events for that minute would say which. Until that is checked, do not present this as a clean result.
+- **What the server's own logs show (read this — it changes the picture).** Render's request log records how long the *server* spent on each request, separately from your internet round trip. In that run, requests came in at almost exactly **~235 ms, ~470 ms, ~705 ms and ~950 ms** — clean multiples of one number:
+
+  | Endpoint | Server time | ≈ database round trips |
+  |---|---|---|
+  | `/health`, `/` (no database) | ~0.5 ms | 0 |
+  | summary / metrics / insights / forecast, once cached | ~235 ms | 1 (the login-check lookup that every authenticated request does) |
+  | `/users/me` | ~470 ms | 2 |
+  | transactions list, budgets | ~705 ms | 3 |
+  | token refresh | ~950 ms | 4 |
+
+  So the cache works (insights took 1.9–2.7 s the first time and 235 ms after), and the remaining time is almost entirely **~235 ms per database round trip** — which is the signature of the app and the database being far apart (for example, a Render region on another continent from the Atlas cluster). It is an inference from the pattern, not something we measured directly: confirm by comparing the region shown for your Atlas cluster with your Render service's region. If they differ, hosting the API in the region nearest the database should cut most of these times several-fold, for free. (The same logs also show the free instance going to sleep exactly 15 minutes after its last request, then taking about 8 seconds to boot when woken.)
 - **Slower than local, as expected.** The 800 ms target was missed on five of the six endpoints. Every request pays an internet round trip, and a free instance has a small, shared CPU. Compare: locally with 10 users and no cache, p95 was 879 ms (3a).
 - **3.4 requests per second is not the server's capacity.** Five users each waiting on slow responses cannot send more than that. It says nothing about the maximum.
 - **Small and single.** Five users, one run, one network. It shows what a handful of real visitors would experience on the free tier; it does not show how the deployment behaves under load.
