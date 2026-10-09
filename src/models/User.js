@@ -40,6 +40,12 @@ const userSchema = new mongoose.Schema(
             type: Boolean,
             default: true,
         },
+        // Public demo logins (see seed.js). Authenticated writes are rejected for
+        // these accounts in middleware/authenticate.js, whatever their role.
+        isDemo: {
+            type: Boolean,
+            default: false,
+        },
         // Powers the admin dashboard's "active users" number.
         lastLoginAt: {
             type: Date,

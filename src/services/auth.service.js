@@ -41,6 +41,7 @@ const sanitizeUser = (user) => ({
     name: user.name,
     email: user.email,
     role: user.role,
+    isDemo: Boolean(user.isDemo),
 });
 
 const register = async ({ name, email, password, role }) => {

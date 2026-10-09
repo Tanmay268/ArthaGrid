@@ -12,6 +12,7 @@ import { useAuthStore } from '@/store/authStore';
 import { toast } from '@/store/toastStore';
 import { useBudgets, useCreateBudget, useDeleteBudget } from '@/api/budgets';
 import { EXPENSE_CATEGORIES } from '@/lib/categories';
+import { useDemoGuard } from '@/lib/demo';
 import { cn, errorMessage, formatCurrency, humanize } from '@/lib/utils';
 import type { Budget } from '@/types/api';
 
@@ -24,6 +25,9 @@ export function BudgetsPage() {
   const [creating, setCreating] = useState(false);
   const [removing, setRemoving] = useState<Budget | undefined>();
   const remove = useDeleteBudget();
+  const guard = useDemoGuard();
+  const openCreate = guard(() => setCreating(true));
+  const askRemove = guard((b: Budget) => setRemoving(b));
 
   const confirmRemove = () => {
     if (!removing) return;
@@ -43,7 +47,7 @@ export function BudgetsPage() {
         description="Monthly spending limits and how much of each you've used so far."
         action={
           isAdmin && (
-            <Button onClick={() => setCreating(true)} className="w-full sm:w-auto">
+            <Button onClick={openCreate} className="w-full sm:w-auto">
               <Plus className="h-4 w-4" />
               New budget
             </Button>
@@ -65,7 +69,7 @@ export function BudgetsPage() {
             <EmptyState
               icon={Wallet}
               message={isAdmin ? 'No budgets yet. Set a monthly limit for a category to start tracking it.' : 'No budgets have been set up yet.'}
-              action={isAdmin ? <Button size="sm" onClick={() => setCreating(true)}>Create the first budget</Button> : undefined}
+              action={isAdmin ? <Button size="sm" onClick={openCreate}>Create the first budget</Button> : undefined}
             />
           </CardContent>
         </Card>
@@ -81,7 +85,7 @@ export function BudgetsPage() {
                   <div className="flex items-center justify-between">
                     <span className="font-medium capitalize">{humanize(b.category)}</span>
                     {isAdmin && (
-                      <Button variant="ghost" size="icon" className="-mr-2 h-8 w-8 hover:text-destructive" onClick={() => setRemoving(b)} aria-label={`Remove ${humanize(b.category)} budget`}>
+                      <Button variant="ghost" size="icon" className="-mr-2 h-8 w-8 hover:text-destructive" onClick={() => askRemove(b)} aria-label={`Remove ${humanize(b.category)} budget`}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     )}

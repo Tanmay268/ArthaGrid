@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useThemeStore, type Theme } from '@/store/themeStore';
 import { toast } from '@/store/toastStore';
 import { useMe, useUpdateMe } from '@/api/users';
+import { useDemoGuard } from '@/lib/demo';
 import { cn, errorMessage } from '@/lib/utils';
 
 const THEMES: { value: Theme; label: string; icon: LucideIcon }[] = [
@@ -25,6 +26,7 @@ export function SettingsPage() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const { theme, setTheme } = useThemeStore();
 
+  const guard = useDemoGuard();
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
 
@@ -34,6 +36,9 @@ export function SettingsPage() {
 
   const saveProfile = (e: React.FormEvent) => {
     e.preventDefault();
+    guardedSave();
+  };
+  const guardedSave = guard(() => {
     const payload: { name?: string; password?: string } = {};
     if (name && name !== me.data?.name) payload.name = name;
     if (password) payload.password = password;
@@ -51,10 +56,10 @@ export function SettingsPage() {
       },
       onError: (err) => toast.error(errorMessage(err)),
     });
-  };
+  });
 
   const weeklyReport = me.data?.preferences?.weeklyReport ?? false;
-  const toggleReport = () => {
+  const toggleReport = guard(() => {
     updateMe.mutate(
       { weeklyReport: !weeklyReport },
       {
@@ -65,7 +70,7 @@ export function SettingsPage() {
         onError: (err) => toast.error(errorMessage(err)),
       }
     );
-  };
+  });
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">

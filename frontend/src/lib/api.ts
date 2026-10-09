@@ -62,6 +62,9 @@ async function request<T>(path: string, init: RequestInit = {}, allowRetry = tru
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      // Required by the backend's CSRF guard whenever the refresh cookie is the
+      // token source (logout, as well as refresh).
+      'X-ArthaGrid-Client': 'web',
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...init.headers,
     },

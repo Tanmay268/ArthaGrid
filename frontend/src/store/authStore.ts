@@ -23,6 +23,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   accessToken: null,
   status: 'checking',
   setSession: (user, accessToken) => set({ user, accessToken, status: 'authenticated' }),
-  setAccessToken: (accessToken) => set({ accessToken, status: 'authenticated' }),
+  // A token alone isn't a session: during boot the refresh yields a token before
+  // /users/me has returned the user. Flipping to 'authenticated' then makes
+  // LoginPage and ProtectedRoute redirect to each other in a loop.
+  setAccessToken: (accessToken) => set((s) => ({ accessToken, status: s.user ? 'authenticated' : s.status })),
   clearSession: () => set({ user: null, accessToken: null, status: 'unauthenticated' }),
 }));

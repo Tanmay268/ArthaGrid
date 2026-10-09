@@ -32,9 +32,9 @@ const seed = async () => {
 
   // Create users
   const [admin, analyst, viewer] = await User.create([
-    { name: 'Alice Admin',  email: 'admin@test.com',   password: 'Password123', role: 'admin'   },
-    { name: 'Bob Analyst',  email: 'analyst@test.com', password: 'Password123', role: 'analyst' },
-    { name: 'Carol Viewer', email: 'viewer@test.com',  password: 'Password123', role: 'viewer'  },
+    { name: 'Alice Admin',  email: 'admin@test.com',   password: 'Password123', role: 'admin',   isDemo: true },
+    { name: 'Bob Analyst',  email: 'analyst@test.com', password: 'Password123', role: 'analyst', isDemo: true },
+    { name: 'Carol Viewer', email: 'viewer@test.com',  password: 'Password123', role: 'viewer',  isDemo: true },
   ]);
 
   const startDate = new Date('2024-07-01');

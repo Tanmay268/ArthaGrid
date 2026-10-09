@@ -9,6 +9,7 @@ import { errorMessage } from '@/lib/utils';
 import { AuthShell } from './AuthShell';
 
 const DEMO_ACCOUNTS = [
+  { role: 'admin', email: 'admin@test.com', password: 'Password123' },
   { role: 'analyst', email: 'analyst@test.com', password: 'Password123' },
   { role: 'viewer', email: 'viewer@test.com', password: 'Password123' },
 ];
@@ -78,7 +79,7 @@ export function LoginPage() {
       </form>
 
       <div className="mt-6 rounded-md border border-border p-3">
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Demo accounts</p>
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Demo accounts <span className="normal-case tracking-normal">(read-only)</span></p>
         <ul className="flex flex-col gap-2">
           {DEMO_ACCOUNTS.map((account) => (
             <li key={account.role} className="flex items-center justify-between gap-3 text-sm">
