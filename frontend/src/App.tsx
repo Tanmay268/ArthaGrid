@@ -10,6 +10,7 @@ import { LoginPage } from '@/pages/auth/LoginPage';
 import { RegisterPage } from '@/pages/auth/RegisterPage';
 import { ApiDocsRedirect } from '@/pages/ApiDocsRedirect';
 import { Spinner } from '@/components/ui/state';
+import { Splash } from '@/components/ui/splash';
 
 // Pages load on demand so the first paint (login) doesn't download the chart
 // library and every screen up front — matters on a phone connection.
@@ -58,9 +59,7 @@ export function App() {
   return (
     <>
       {status === 'checking' ? (
-        <div className="flex min-h-screen items-center justify-center">
-          <Spinner label="Loading ArthaGrid… (a free server that's been idle can take up to a minute to wake)" />
-        </div>
+        <Splash />
       ) : (
         <BrowserRouter>
           <Suspense fallback={<div className="p-6"><Spinner /></div>}>
