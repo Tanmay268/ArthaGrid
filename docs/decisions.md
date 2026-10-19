@@ -271,3 +271,15 @@ Like Postgres (decision #17), this is optional at the code level: without `AZURE
 **Why:** Without `trust proxy`, every user on Render appears to have the proxy's IP, so all users share one rate-limit bucket — one busy user could lock everyone out. And load testing needs the limiter off, but a limiter that can be switched off by one environment variable is a security hole if that variable is ever set by mistake in production.
 
 **Trade-off:** `trust proxy = 1` is only correct while there is exactly one proxy hop in front of the app; if deployed behind a CDN plus a load balancer, the number must change or clients could spoof their IP via `X-Forwarded-For`.
+
+---
+
+### 27. Demo accounts live in their own database, with a few features locked
+
+**Decision:** The public demo logins (`admin@/analyst@/viewer@test.com`) are stored in a **separate MongoDB database** (`arthagrid-demo` by default; `DEMO_DB_NAME`, or `DEMO_MONGO_URI` for another cluster), not in the real accounts' database. The tenant is chosen once per request — a `demo: true` claim in the access token, a `d.` prefix on the refresh token, and an email lookup at login — and carried via `AsyncLocalStorage` (`src/config/tenant.js`). The exported models (`User`, `Transaction`, …) are proxies that resolve to the live or demo model for the current request, so services are unchanged. Caches (response cache, running balances, the categorizer's trained model) are namespaced per tenant, and Postgres rollups are never used for demo data.
+
+Because demo data is isolated, demo accounts may use every feature including creating/editing/deleting transactions and budgets. A short list of critical actions stays locked **even for the demo admin** (`src/config/demoRestrictions.js`): editing the profile/password/email-report settings, changing other users' roles/details, and deactivating users. They get a 403 `DEMO_RESTRICTED`, and the UI shows a banner (and notes on Settings/Admin) saying which features are restricted.
+
+**Why:** The earlier "demo = read-only flag in the shared database" meant demo visitors couldn't try the product, and any mistake in the flag check would have exposed real data. A separate database makes the isolation structural. `npm run seed:demo` resets only the demo database.
+
+**Trade-offs:** Demo visitors share one sandbox, so they see each other's edits until it's re-seeded (re-run `npm run seed:demo`, e.g. on a schedule). Demo email addresses are reserved against real registration. `npm run clean -- --yes [--demo] [--keep-users]` wipes one database at a time.

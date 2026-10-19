@@ -3,6 +3,8 @@ const connectDB = require('./src/config/db');
 const { User } = require('./src/models/User');
 const { Transaction, INCOME_CATEGORIES, EXPENSE_CATEGORIES } = require('./src/models/Transaction');
 const { Budget } = require('./src/models/Budget');
+const RefreshToken = require('./src/models/RefreshToken');
+const { DEMO, runWithTenant } = require('./src/config/tenant');
 
 const randomBetween = (min, max) =>
   Math.round((Math.random() * (max - min) + min) * 100) / 100;
@@ -22,13 +24,15 @@ const RECURRING_CHARGES = [
   { merchant: 'Landlord', amount: 15000, category: 'housing' },
 ];
 
-const seed = async () => {
-  await connectDB();
-
-  // Clear existing data
+// Seeds the DEMO database only (a separate database from real accounts — see
+// src/config/tenant.js). Safe to re-run any time to put the demo back to a
+// clean state; real accounts are never touched.
+const seedDemo = async () => {
+  // Clear existing demo data
   await User.deleteMany({});
   await Transaction.deleteMany({});
   await Budget.deleteMany({});
+  await RefreshToken.deleteMany({});
 
   // Create users
   const [admin, analyst, viewer] = await User.create([
@@ -93,10 +97,15 @@ const seed = async () => {
     { category: 'shopping', monthlyLimit: 6000, createdBy: admin._id },
   ]);
 
-  console.log('✓ Seeded: 3 users, ~85 transactions (incl. recurring charges + 1 anomaly), 3 budgets');
+  console.log('✓ Seeded the DEMO database: 3 users, ~85 transactions (incl. recurring charges + 1 anomaly), 3 budgets');
   console.log('  admin@test.com    / Password123  (admin)');
   console.log('  analyst@test.com  / Password123  (analyst)');
   console.log('  viewer@test.com   / Password123  (viewer)');
+};
+
+const seed = async () => {
+  await connectDB();
+  await runWithTenant(DEMO, seedDemo);
   process.exit(0);
 };
 

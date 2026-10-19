@@ -6,6 +6,8 @@ import { Progress } from '@/components/ui/progress';
 import { Skeleton, CardSkeleton } from '@/components/ui/skeleton';
 import { ErrorState, EmptyState } from '@/components/ui/state';
 import { useAdminStats } from '@/api/admin';
+import { DemoNotice } from '@/components/DemoBanner';
+import { useIsDemo } from '@/lib/demo';
 import { cn, humanize } from '@/lib/utils';
 
 const fmt = (n: number) => n.toLocaleString('en-IN');
@@ -20,6 +22,7 @@ const duration = (seconds: number) => {
 export function AdminPage() {
   const stats = useAdminStats();
   const d = stats.data;
+  const isDemo = useIsDemo();
 
   return (
     <div className="flex flex-col gap-4">
@@ -27,6 +30,8 @@ export function AdminPage() {
         title="Admin"
         description="How the platform is doing. Aggregate numbers only — no individual transactions appear here."
       />
+
+      {isDemo && <DemoNotice>These numbers come from the demo sandbox only. Changing user roles and deactivating users are restricted on demo accounts.</DemoNotice>}
 
       {stats.isError && <ErrorState message="Couldn't load platform stats." onRetry={() => stats.refetch()} />}
 

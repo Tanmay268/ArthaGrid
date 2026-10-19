@@ -10,6 +10,7 @@
     "test:watch": "jest --watchAll",
     "seed": "node seed.js",
     "clean": "node clean.js",
+    "seed:demo": "node seed.js",
     "eval:categorizer": "node scripts/evaluate-categorizer.js",
     "loadtest:server": "node loadtest/server.js"
   },

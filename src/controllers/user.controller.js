@@ -1,8 +1,13 @@
 const userService = require('../services/user.service');
+const { isDemoTenant } = require('../config/tenant');
+const { demoRestrictionLabels } = require('../config/demoRestrictions');
 
 const getMe = async (req, res) => {
     const user = await userService.getUserById(req.user._id);
-    res.status(200).json({ success: true, data: user });
+    const data = isDemoTenant()
+        ? { ...user.toObject(), isDemo: true, demoRestrictions: demoRestrictionLabels() }
+        : user;
+    res.status(200).json({ success: true, data });
 };
 
 const updateMe = async (req, res) => {

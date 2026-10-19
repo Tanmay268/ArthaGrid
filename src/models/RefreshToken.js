@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { tenantModel } = require('../config/tenant');
 
 // We only ever store a SHA-256 hash of the refresh token, never the raw
 // value — so a database leak alone can't be used to impersonate a session.
@@ -35,5 +36,5 @@ const refreshTokenSchema = new mongoose.Schema(
 // passed, so expired sessions clean themselves up with no cron job needed.
 refreshTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
-const RefreshToken = mongoose.model('RefreshToken', refreshTokenSchema);
+const RefreshToken = tenantModel('RefreshToken', refreshTokenSchema);
 module.exports = RefreshToken;

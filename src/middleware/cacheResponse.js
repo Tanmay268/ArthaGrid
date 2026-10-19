@@ -1,4 +1,5 @@
 const cache = require('../utils/cache');
+const { currentTenant } = require('../config/tenant');
 
 // Requests currently being computed, by cache key. Lets simultaneous misses
 // for the same URL share ONE computation instead of each running the full
@@ -17,6 +18,7 @@ const cacheResponse = async (req, res, next) => {
     if (req.method !== 'GET' || cache.ttlSeconds() <= 0) return next();
 
     const key = req.originalUrl;
+    const inflightKey = `${currentTenant()}:${key}`; // tenants never share an in-flight computation
 
     const hit = cache.get(key);
     if (hit !== undefined) {
@@ -25,8 +27,8 @@ const cacheResponse = async (req, res, next) => {
     }
 
     // Someone else is already computing this exact response — wait for it.
-    if (inflight.has(key)) {
-        const body = await inflight.get(key);
+    if (inflight.has(inflightKey)) {
+        const body = await inflight.get(inflightKey);
         if (body !== null) {
             res.set('X-Cache', 'COALESCED');
             return res.status(200).json(body);
@@ -39,9 +41,9 @@ const cacheResponse = async (req, res, next) => {
     // We're the leader for this key.
     let settle;
     const pending = new Promise((resolve) => { settle = resolve; });
-    inflight.set(key, pending);
+    inflight.set(inflightKey, pending);
     const finish = (body) => {
-        if (inflight.get(key) === pending) inflight.delete(key);
+        if (inflight.get(inflightKey) === pending) inflight.delete(inflightKey);
         settle(body); // resolving twice is a no-op
     };
 

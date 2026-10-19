@@ -10,7 +10,8 @@ import { useAuthStore } from '@/store/authStore';
 import { useThemeStore, type Theme } from '@/store/themeStore';
 import { toast } from '@/store/toastStore';
 import { useMe, useUpdateMe } from '@/api/users';
-import { useDemoGuard } from '@/lib/demo';
+import { useDemoGuard, useIsDemo } from '@/lib/demo';
+import { DemoNotice } from '@/components/DemoBanner';
 import { cn, errorMessage } from '@/lib/utils';
 
 const THEMES: { value: Theme; label: string; icon: LucideIcon }[] = [
@@ -27,6 +28,7 @@ export function SettingsPage() {
   const { theme, setTheme } = useThemeStore();
 
   const guard = useDemoGuard();
+  const isDemo = useIsDemo();
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
 
@@ -38,7 +40,7 @@ export function SettingsPage() {
     e.preventDefault();
     guardedSave();
   };
-  const guardedSave = guard(() => {
+  const guardedSave = guard('Editing the profile and password', () => {
     const payload: { name?: string; password?: string } = {};
     if (name && name !== me.data?.name) payload.name = name;
     if (password) payload.password = password;
@@ -59,7 +61,7 @@ export function SettingsPage() {
   });
 
   const weeklyReport = me.data?.preferences?.weeklyReport ?? false;
-  const toggleReport = guard(() => {
+  const toggleReport = guard('Email-report settings', () => {
     updateMe.mutate(
       { weeklyReport: !weeklyReport },
       {
@@ -75,6 +77,7 @@ export function SettingsPage() {
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
       <PageHeader title="Settings" description="Your profile, appearance, and notifications." />
+      {isDemo && <DemoNotice>Profile, password and email-report settings are restricted on demo accounts. Appearance works as normal.</DemoNotice>}
 
       <Card>
         <CardHeader>

@@ -14,12 +14,10 @@ import { useDeleteTransaction, useTransactions, type TransactionFilters } from '
 import { ALL_CATEGORIES } from '@/lib/categories';
 import { cn, errorMessage, formatCurrency, formatDate, humanize } from '@/lib/utils';
 import type { Transaction } from '@/types/api';
-import { useDemoGuard } from '@/lib/demo';
 import { TransactionFormDialog } from './TransactionFormDialog';
 
 export function TransactionsPage() {
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin');
-  const guard = useDemoGuard();
   const [filters, setFilters] = useState<TransactionFilters>({ page: 1, limit: 15, sortBy: 'date', sortOrder: 'desc' });
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | undefined>();
@@ -29,16 +27,16 @@ export function TransactionsPage() {
   const remove = useDeleteTransaction();
 
   const updateFilter = (patch: Partial<TransactionFilters>) => setFilters((f) => ({ ...f, ...patch, page: 1 }));
-  const openCreate = guard(() => {
+  const openCreate = () => {
     setEditing(undefined);
     setFormOpen(true);
-  });
-  const openEdit = guard((t: Transaction) => {
+  };
+  const openEdit = (t: Transaction) => {
     setEditing(t);
     setFormOpen(true);
-  });
+  };
 
-  const askDelete = guard((t: Transaction) => setDeleting(t));
+  const askDelete = (t: Transaction) => setDeleting(t);
   const confirmDelete = () => {
     if (!deleting) return;
     remove.mutate(deleting._id, {

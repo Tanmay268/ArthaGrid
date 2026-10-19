@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
-const { boolean } = require('joi');
+const { tenantModel } = require('../config/tenant');
 
 const ROLES = {
     VIEWER: 'viewer',
@@ -75,5 +75,5 @@ userSchema.methods.comparePassword = async function (candidatePassword){
     return bcrypt.compare(candidatePassword, this.password);
 }
 
-const User = mongoose.model('User', userSchema);
+const User = tenantModel('User', userSchema);
 module.exports = { User, ROLES };

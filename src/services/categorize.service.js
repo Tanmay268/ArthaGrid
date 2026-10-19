@@ -1,6 +1,7 @@
 const { Transaction, INCOME_CATEGORIES, EXPENSE_CATEGORIES } = require('../models/Transaction');
 const { SEED } = require('../data/categorySeed');
 const cache = require('../utils/cache');
+const { currentTenant } = require('../config/tenant');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Category suggestion: a Multinomial Naive Bayes text classifier, written in
@@ -112,10 +113,12 @@ const seedExamples = () =>
 
 // ─── Model lifecycle: rebuilt when the ledger changes ───────────────────────
 
-let cached = { version: -1, model: null, ledgerExamples: 0 };
+const cachedByTenant = {}; // live and demo ledgers train separate models
 
 const getModel = async () => {
-    if (cached.model && cached.version === cache.version()) return cached;
+    const tenant = currentTenant();
+    const existing = cachedByTenant[tenant];
+    if (existing && existing.model && existing.version === cache.version()) return existing;
 
     // find() goes through the soft-delete hook, so deleted transactions
     // don't train the model.
@@ -131,12 +134,12 @@ const getModel = async () => {
         weight: LEDGER_WEIGHT,
     }));
 
-    cached = {
+    cachedByTenant[tenant] = {
         version: cache.version(),
         model: trainModel([...seedExamples(), ...ledger]),
         ledgerExamples: ledger.length,
     };
-    return cached;
+    return cachedByTenant[tenant];
 };
 
 // ─── POST /api/v1/transactions/suggest-category ─────────────────────────────

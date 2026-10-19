@@ -1,5 +1,6 @@
 const { Transaction } = require('../models/Transaction');
 const { getPool, isConfigured } = require('../config/postgres');
+const { isDemoTenant } = require('../config/tenant');
 
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -95,6 +96,8 @@ const runRollup = async () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getMonthlyHistoryFromPostgres = async () => {
+    // Rollups mirror the live ledger only; demo data is always computed live from its own database.
+    if (isDemoTenant()) return null;
     if (!isConfigured()) return null;
 
     const pool = getPool();

@@ -79,7 +79,7 @@ export function LoginPage() {
       </form>
 
       <div className="mt-6 rounded-md border border-border p-3">
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Demo accounts <span className="normal-case tracking-normal">(read-only)</span></p>
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Demo accounts <span className="normal-case tracking-normal">(sandbox · some features restricted)</span></p>
         <ul className="flex flex-col gap-2">
           {DEMO_ACCOUNTS.map((account) => (
             <li key={account.role} className="flex items-center justify-between gap-3 text-sm">

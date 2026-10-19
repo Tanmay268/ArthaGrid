@@ -11,6 +11,8 @@
 // to reuse across users — but ONLY behind authenticate/authorize, which is
 // why cacheResponse is mounted after them, never before.
 
+const { currentTenant } = require('../config/tenant');
+
 const MAX_ENTRIES = 200;
 const store = new Map(); // key -> { body, expiresAt }
 let version = 0;
@@ -24,7 +26,12 @@ const ttlSeconds = () => {
     return process.env.NODE_ENV === 'test' ? 0 : 30;
 };
 
-const get = (key) => {
+// Live and demo data are separate databases, so one's cached bodies must never
+// be served to the other.
+const scoped = (key) => `${currentTenant()}:${key}`;
+
+const get = (rawKey) => {
+    const key = scoped(rawKey);
     const hit = store.get(key);
     if (!hit) return undefined;
     if (hit.expiresAt < Date.now()) {
@@ -34,7 +41,8 @@ const get = (key) => {
     return hit.body;
 };
 
-const set = (key, body) => {
+const set = (rawKey, body) => {
+    const key = scoped(rawKey);
     const ttl = ttlSeconds();
     if (ttl <= 0) return;
     if (store.size >= MAX_ENTRIES) store.delete(store.keys().next().value); // evict oldest

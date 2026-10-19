@@ -9,6 +9,7 @@ export interface User {
   email: string;
   role: Role;
   isDemo?: boolean;
+  demoRestrictions?: string[];
   isActive?: boolean;
   preferences?: { weeklyReport: boolean };
 }

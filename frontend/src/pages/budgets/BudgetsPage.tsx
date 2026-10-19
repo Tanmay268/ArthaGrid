@@ -12,7 +12,6 @@ import { useAuthStore } from '@/store/authStore';
 import { toast } from '@/store/toastStore';
 import { useBudgets, useCreateBudget, useDeleteBudget } from '@/api/budgets';
 import { EXPENSE_CATEGORIES } from '@/lib/categories';
-import { useDemoGuard } from '@/lib/demo';
 import { cn, errorMessage, formatCurrency, humanize } from '@/lib/utils';
 import type { Budget } from '@/types/api';
 
@@ -25,9 +24,8 @@ export function BudgetsPage() {
   const [creating, setCreating] = useState(false);
   const [removing, setRemoving] = useState<Budget | undefined>();
   const remove = useDeleteBudget();
-  const guard = useDemoGuard();
-  const openCreate = guard(() => setCreating(true));
-  const askRemove = guard((b: Budget) => setRemoving(b));
+  const openCreate = () => setCreating(true);
+  const askRemove = (b: Budget) => setRemoving(b);
 
   const confirmRemove = () => {
     if (!removing) return;

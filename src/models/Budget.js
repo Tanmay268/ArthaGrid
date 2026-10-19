@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { tenantModel } = require('../config/tenant');
 const { EXPENSE_CATEGORIES } = require('./Transaction');
 
 // Budgets are global per category (one shared ledger, same as transactions —
@@ -38,6 +39,6 @@ const budgetSchema = new mongoose.Schema(
     }
 );
 
-const Budget = mongoose.model('Budget', budgetSchema);
+const Budget = tenantModel('Budget', budgetSchema);
 
 module.exports = { Budget };

@@ -1,5 +1,5 @@
-const { date, required } = require('joi');
 const mongoose = require('mongoose');
+const { tenantModel } = require('../config/tenant');
 
 const TRANSACTION_TYPES = ['income', 'expense'];
 
@@ -94,6 +94,6 @@ transactionSchema.pre(/^find/, function () {
 });
 
 //convert schema to working model to enable CRUD operations
-const Transaction = mongoose.model('Transaction', transactionSchema);
+const Transaction = tenantModel('Transaction', transactionSchema);
 
 module.exports = { Transaction, TRANSACTION_TYPES, CATEGORIES, INCOME_CATEGORIES, EXPENSE_CATEGORIES };
